@@ -1,0 +1,22 @@
+package com.example.sport_be.entity;
+
+import jakarta.persistence.*;
+import lombok.Getter;
+import lombok.Setter;
+
+@Entity
+@Table(name = "kich_thuoc")
+@Getter
+@Setter
+public class KichThuoc {
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @Column(name = "id_kich_thuoc")
+    private Integer id;
+
+    @Column(name = "ten_kich_thuoc")
+    private String ten;
+
+    @Column(name = "trang_thai")
+    private Boolean trangThai;
+}
