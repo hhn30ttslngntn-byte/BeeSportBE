@@ -1,6 +1,6 @@
 package com.example.sport_be.repository;
 
-import com.example.sport_be.entity.Product;
+import com.example.sport_be.model.Product;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;

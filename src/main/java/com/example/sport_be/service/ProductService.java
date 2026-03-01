@@ -1,6 +1,6 @@
 package com.example.sport_be.service;
 
-import com.example.sport_be.entity.Product;
+import com.example.sport_be.model.Product;
 import java.util.List;
 import java.util.Map;
 

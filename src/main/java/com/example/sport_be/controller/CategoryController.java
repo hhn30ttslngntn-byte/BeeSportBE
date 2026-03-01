@@ -1,6 +1,6 @@
 package com.example.sport_be.controller;
 
-import com.example.sport_be.entity.Category;
+import com.example.sport_be.model.Category;
 import com.example.sport_be.service.CategoryService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;

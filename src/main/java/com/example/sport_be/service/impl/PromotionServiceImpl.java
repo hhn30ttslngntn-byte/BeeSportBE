@@ -1,6 +1,6 @@
 package com.example.sport_be.service.impl;
 
-import com.example.sport_be.entity.Promotion;
+import com.example.sport_be.model.Promotion;
 import com.example.sport_be.repository.PromotionRepository;
 import com.example.sport_be.service.PromotionService;
 import lombok.RequiredArgsConstructor;

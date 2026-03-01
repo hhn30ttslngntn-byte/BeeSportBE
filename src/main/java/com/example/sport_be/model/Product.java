@@ -1,4 +1,4 @@
-package com.example.sport_be.entity;
+package com.example.sport_be.model;
 
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;

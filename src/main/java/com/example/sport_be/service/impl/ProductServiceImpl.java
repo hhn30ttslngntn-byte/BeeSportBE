@@ -1,7 +1,7 @@
 package com.example.sport_be.service.impl;
 
-import com.example.sport_be.entity.Category;
-import com.example.sport_be.entity.Product;
+import com.example.sport_be.model.Category;
+import com.example.sport_be.model.Product;
 import com.example.sport_be.repository.CategoryRepository;
 import com.example.sport_be.repository.ProductRepository;
 import com.example.sport_be.service.ProductService;
