@@ -1,5 +1,6 @@
 package com.example.sport_be.controller;
 
+import com.example.sport_be.dto.OrderRequest;
 import com.example.sport_be.entity.*;
 import com.example.sport_be.service.UserService;
 import lombok.RequiredArgsConstructor;
@@ -49,12 +50,12 @@ public class UserController {
         return ResponseEntity.ok("Added to cart");
     }
 
-    @PostMapping("/order/{userId}/create")
-    public ResponseEntity<HoaDon> createOrder(@PathVariable Integer userId, @RequestParam String address, @RequestParam String phone) {
-        return ResponseEntity.ok(userService.createOrder(userId, address, phone));
+    // --- Order ---
+    @PostMapping("/order/create")
+    public ResponseEntity<HoaDon> createOrder(@RequestBody OrderRequest request) {
+        return ResponseEntity.ok(userService.createOrder(request));
     }
 
-    // --- Order ---
     @GetMapping("/orders/{userId}")
     public ResponseEntity<List<HoaDon>> getUserOrders(@PathVariable Integer userId) {
         return ResponseEntity.ok(userService.getUserOrders(userId));
@@ -63,5 +64,11 @@ public class UserController {
     @GetMapping("/order/{orderId}")
     public ResponseEntity<HoaDon> getOrderById(@PathVariable Integer orderId) {
         return ResponseEntity.ok(userService.getOrderById(orderId));
+    }
+
+    // --- Voucher ---
+    @GetMapping("/vouchers")
+    public ResponseEntity<List<MaGiamGia>> getAllVouchers() {
+        return ResponseEntity.ok(userService.getAllVouchers());
     }
 }

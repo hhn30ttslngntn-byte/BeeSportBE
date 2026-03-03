@@ -20,6 +20,9 @@ public class SanPham {
     @JoinColumn(name = "id_danh_muc")
     private DanhMuc danhMuc;
 
+    @Column(name = "ma_san_pham", length = 50, unique = true)
+    private String ma;
+
     @Column(name = "ten_san_pham", length = 200)
     private String ten;
 

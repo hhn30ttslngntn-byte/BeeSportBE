@@ -15,6 +15,9 @@ public class GioHang {
     @Column(name = "id_gio_hang")
     private Integer id;
 
+    @Column(name = "ma_gio_hang", unique = true)
+    private String ma;
+
     @ManyToOne
     @JoinColumn(name = "id_nguoi_dung")
     private NguoiDung nguoiDung;
@@ -29,5 +32,6 @@ public class GioHang {
     protected void onCreate() {
         ngayTao = LocalDateTime.now();
         if (trangThai == null) trangThai = "DANG_SU_DUNG";
+        if (ma == null) ma = "GH" + System.currentTimeMillis();
     }
 }

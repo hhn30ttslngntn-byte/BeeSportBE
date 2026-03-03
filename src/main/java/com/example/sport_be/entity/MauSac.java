@@ -14,6 +14,9 @@ public class MauSac {
     @Column(name = "id_mau_sac")
     private Integer id;
 
+    @Column(name = "ma_mau_sac", length = 50)
+    private String ma;
+
     @Column(name = "ten_mau")
     private String ten;
 

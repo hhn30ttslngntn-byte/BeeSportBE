@@ -14,6 +14,9 @@ public class GioHangChiTiet {
     @Column(name = "id_ghct")
     private Integer id;
 
+    @Column(name = "ma_gio_hang_chi_tiet", unique = true)
+    private String ma;
+
     @ManyToOne
     @JoinColumn(name = "id_gio_hang")
     private GioHang gioHang;
@@ -24,4 +27,9 @@ public class GioHangChiTiet {
 
     @Column(name = "so_luong")
     private Integer soLuong;
+
+    @PrePersist
+    protected void onCreate() {
+        if (ma == null) ma = "GHCT" + System.currentTimeMillis();
+    }
 }

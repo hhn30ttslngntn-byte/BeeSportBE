@@ -14,6 +14,9 @@ public class VaiTro {
     @Column(name = "id_vai_tro")
     private Integer id;
 
+    @Column(name = "ma_vai_tro", length = 50)
+    private String ma;
+
     @Column(name = "ten_vai_tro", length = 50)
     private String ten;
 

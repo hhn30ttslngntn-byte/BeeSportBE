@@ -31,6 +31,9 @@ public class SanPhamChiTiet {
     @JoinColumn(name = "id_chat_lieu")
     private ChatLieu chatLieu;
 
+    @Column(name = "ma_san_pham_chi_tiet", length = 50, unique = true)
+    private String ma;
+
     @Column(name = "so_luong")
     private Integer soLuong;
 

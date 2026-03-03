@@ -19,8 +19,14 @@ public class NguoiDung {
     @JoinColumn(name = "id_vai_tro")
     private VaiTro vaiTro;
 
+    @Column(name = "ma_nguoi_dung", length = 50)
+    private String maNguoiDung;
+
     @Column(name = "ho_ten", length = 150)
     private String hoTen;
+
+    @Column(name = "so_dien_thoai", length = 20)
+    private String soDienThoai;
 
     @Column(name = "email", length = 150, unique = true)
     private String email;
