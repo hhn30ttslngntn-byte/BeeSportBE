@@ -24,6 +24,9 @@ public class LichSuHoaDon {
     @JoinColumn(name = "id_hoa_don")
     private HoaDon hoaDon;
 
+    @Column(name = "ma_lich_su_hoa_don", length = 50)
+    private String maLichSuHoaDon;
+
     @Column(name = "trang_thai", length = 30)
     private String trangThai;
 

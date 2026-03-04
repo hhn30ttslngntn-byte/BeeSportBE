@@ -22,6 +22,9 @@ public class DoiTra {
     @JoinColumn(name = "id_hoa_don")
     private HoaDon hoaDon;
 
+    @Column(name = "ma_doi_tra", length = 50)
+    private String maDoiTra;
+
     @Column(name = "ly_do", length = 255)
     private String lyDo;
 

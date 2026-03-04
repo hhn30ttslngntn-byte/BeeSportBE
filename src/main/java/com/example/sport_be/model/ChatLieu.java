@@ -18,6 +18,9 @@ public class ChatLieu {
     @Column(name = "id_chat_lieu")
     private Integer id;
 
+    @Column(name = "ma_chat_lieu", length = 50)
+    private String maChatLieu;
+
     @Column(name = "ten_chat_lieu", length = 50)
     private String tenChatLieu;
 

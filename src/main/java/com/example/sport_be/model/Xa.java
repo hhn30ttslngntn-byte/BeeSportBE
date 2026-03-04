@@ -23,6 +23,9 @@ public class Xa {
     @JoinColumn(name = "id_huyen")
     private Huyen huyen;
 
+    @Column(name = "ma_xa", length = 50)
+    private String maXa;
+
     @Column(name = "ten_xa", length = 100)
     private String tenXa;
 

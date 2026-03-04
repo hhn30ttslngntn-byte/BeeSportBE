@@ -24,6 +24,9 @@ public class NguoiDung {
     @JoinColumn(name = "id_vai_tro")
     private VaiTro vaiTro;
 
+    @Column(name = "ma_nguoi_dung", length = 50)
+    private String maNguoiDung;
+
     @Column(name = "ho_ten", length = 150)
     private String hoTen;
 

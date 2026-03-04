@@ -23,6 +23,9 @@ public class Huyen {
     @JoinColumn(name = "id_tinh")
     private Tinh tinh;
 
+    @Column(name = "ma_huyen", length = 50)
+    private String maHuyen;
+
     @Column(name = "ten_huyen", length = 100)
     private String tenHuyen;
 

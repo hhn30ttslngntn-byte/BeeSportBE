@@ -23,6 +23,9 @@ public class HinhAnhSanPham {
     @JoinColumn(name = "id_san_pham")
     private SanPham sanPham;
 
+    @Column(name = "ma_hinh_anh_san_pham", length = 50)
+    private String maHinhAnhSanPham;
+
     @Column(name = "url", length = 255)
     private String url;
 

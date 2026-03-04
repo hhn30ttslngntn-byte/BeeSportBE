@@ -28,6 +28,9 @@ public class LichSuSuDungMaGiamGia {
     @JoinColumn(name = "id_hoa_don")
     private HoaDon hoaDon;
 
+    @Column(name = "ma_lich_su_su_dung_ma_giam_gia", length = 50)
+    private String maLichSuSuDungMaGiamGia;
+
     @Column(name = "ngay_su_dung")
     private LocalDateTime ngaySuDung;
 }

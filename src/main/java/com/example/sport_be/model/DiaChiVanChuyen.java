@@ -24,6 +24,9 @@ public class DiaChiVanChuyen {
     @JoinColumn(name = "id_xa")
     private Xa xa;
 
+    @Column(name = "ma_dia_chi_van_chuyen", length = 50)
+    private String maDiaChiVanChuyen;
+
     @Column(name = "dia_chi_chi_tiet", length = 255)
     private String diaChiChiTiet;
 

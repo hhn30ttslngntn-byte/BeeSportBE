@@ -19,6 +19,9 @@ public class KichThuoc {
     @Column(name = "id_kich_thuoc")
     private Integer id;
 
+    @Column(name = "ma_kich_thuoc", length = 50)
+    private String maKichThuoc;
+
     @Column(name = "ten_kich_thuoc", length = 50)
     private String tenKichThuoc;
 

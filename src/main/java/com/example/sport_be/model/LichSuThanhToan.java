@@ -29,6 +29,9 @@ public class LichSuThanhToan {
     @JoinColumn(name = "id_pttt")
     private PhuongThucThanhToan phuongThucThanhToan;
 
+    @Column(name = "ma_lich_su_thanh_toan", length = 50)
+    private String maLichSuThanhToan;
+
     @Column(name = "so_tien")
     private BigDecimal soTien;
 

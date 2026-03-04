@@ -18,6 +18,9 @@ public class DanhMuc {
     @Column(name = "id_danh_muc")
     private Integer id;
 
+    @Column(name = "ma_danh_muc", length = 50)
+    private String maDanhMuc;
+
     @Column(name = "ten_danh_muc", length = 150)
     private String tenDanhMuc;
 

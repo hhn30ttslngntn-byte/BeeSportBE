@@ -27,6 +27,9 @@ public class GioHangChiTiet {
     @JoinColumn(name = "id_spct")
     private SanPhamChiTiet sanPhamChiTiet;
 
+    @Column(name = "ma_gio_hang_chi_tiet", length = 50)
+    private String maGioHangChiTiet;
+
     @Column(name = "so_luong")
     private Integer soLuong;
 }

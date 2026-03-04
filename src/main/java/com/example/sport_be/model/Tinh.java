@@ -19,6 +19,9 @@ public class Tinh {
     @Column(name = "id_tinh")
     private Integer id;
 
+    @Column(name = "ma_tinh", length = 50)
+    private String maTinh;
+
     @Column(name = "ten_tinh", length = 100)
     private String tenTinh;
 

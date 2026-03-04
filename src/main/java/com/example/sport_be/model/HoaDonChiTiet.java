@@ -28,6 +28,9 @@ public class HoaDonChiTiet {
     @JoinColumn(name = "id_spct")
     private SanPhamChiTiet sanPhamChiTiet;
 
+    @Column(name = "ma_hoa_don_chi_tiet", length = 50)
+    private String maHoaDonChiTiet;
+
     @Column(name = "so_luong")
     private Integer soLuong;
 

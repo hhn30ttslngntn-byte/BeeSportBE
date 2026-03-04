@@ -20,6 +20,9 @@ public class SanPhamChiTiet {
     @Column(name = "id_spct")
     private Integer id;
 
+    @Column(name = "ma_san_pham_chi_tiet", length = 50)
+    private String maSanPhamChiTiet;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "id_san_pham")
     private SanPham sanPham;

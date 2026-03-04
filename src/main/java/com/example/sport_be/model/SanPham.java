@@ -24,6 +24,9 @@ public class SanPham {
     @JoinColumn(name = "id_danh_muc")
     private DanhMuc danhMuc;
 
+    @Column(name = "ma_san_pham", length = 50)
+    private String maSanPham;
+
     @Column(name = "ten_san_pham", length = 200)
     private String tenSanPham;
 

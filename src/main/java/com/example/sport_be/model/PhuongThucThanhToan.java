@@ -19,6 +19,9 @@ public class PhuongThucThanhToan {
     @Column(name = "id_pttt")
     private Integer id;
 
+    @Column(name = "ma_pt_thanh_toan", length = 50)
+    private String maPTThanhToan;
+
     @Column(name = "ten_pttt", length = 100)
     private String tenPttt;
 

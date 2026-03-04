@@ -19,6 +19,9 @@ public class GiamGiaSanPham {
     @Column(name = "id_giam_gia_san_pham")
     private Integer id;
 
+    @Column(name = "ma_giam_gia_san_pham", length = 50)
+    private String maGiamGiaSanPham;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "id_dot_giam_gia")
     private DotGiamGia dotGiamGia;

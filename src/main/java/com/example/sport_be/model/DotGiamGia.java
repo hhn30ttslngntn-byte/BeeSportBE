@@ -21,6 +21,9 @@ public class DotGiamGia {
     @Column(name = "id_dot_giam_gia")
     private Integer id;
 
+    @Column(name = "ma_dot_giam_gia", length = 50)
+    private String maDotGiamGia;
+
     @Column(name = "ten_dot", length = 150)
     private String tenDot;
 

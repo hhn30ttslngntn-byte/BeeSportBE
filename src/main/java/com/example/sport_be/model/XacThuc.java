@@ -23,6 +23,9 @@ public class XacThuc {
     @JoinColumn(name = "id_nguoi_dung")
     private NguoiDung nguoiDung;
 
+    @Column(name = "ma_xac_thuc", length = 50)
+    private String maXacThuc;
+
     @Column(name = "loai_xac_thuc", length = 50)
     private String loaiXacThuc;
 
