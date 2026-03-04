@@ -3,8 +3,6 @@ package com.example.sport_be.model;
 import jakarta.persistence.*;
 import lombok.*;
 
-import java.util.List;
-
 @Entity
 @Table(name = "gio_hang_chi_tiet")
 @Getter

@@ -3,8 +3,6 @@ package com.example.sport_be.model;
 import jakarta.persistence.*;
 import lombok.*;
 
-import java.util.List;
-
 @Entity
 @Table(name = "tinh")
 @Getter
@@ -24,4 +22,6 @@ public class Tinh {
 
     @Column(name = "trang_thai")
     private Boolean trangThai;
+    @Column(name = "ma_tinh")
+    private String maTinh;
 }

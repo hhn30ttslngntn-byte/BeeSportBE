@@ -1,7 +1,6 @@
 package com.example.sport_be.DTO;
 
 import lombok.*;
-import java.math.BigDecimal;
 import jakarta.validation.constraints.*;
 
 @Getter

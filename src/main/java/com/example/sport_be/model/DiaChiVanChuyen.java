@@ -29,4 +29,7 @@ public class DiaChiVanChuyen {
 
     @Column(name = "trang_thai")
     private Boolean trangThai;
+
+    @Column(name = "ma_dia_chi_van_chuyen")
+    private String maDiaChiVanChuyen;
 }

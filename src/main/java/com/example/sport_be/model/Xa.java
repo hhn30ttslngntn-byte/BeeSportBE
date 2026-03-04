@@ -3,8 +3,6 @@ package com.example.sport_be.model;
 import jakarta.persistence.*;
 import lombok.*;
 
-import java.util.List;
-
 @Entity
 @Table(name = "xa")
 @Getter
@@ -18,6 +16,8 @@ public class Xa {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     @Column(name = "id_xa")
     private Integer id;
+    @Column(name = "ma_xa")
+    private String maXa;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "id_huyen")

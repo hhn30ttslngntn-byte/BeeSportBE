@@ -3,7 +3,6 @@ package com.example.sport_be.DTO;
 import lombok.*;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
-import jakarta.validation.constraints.*;
 
 @Getter
 @Setter

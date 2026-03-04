@@ -8,6 +8,7 @@ import jakarta.validation.constraints.*;
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
+@Data
 public class DiaChiVanChuyenDTO {
     private Integer id;
 
@@ -20,6 +21,7 @@ public class DiaChiVanChuyenDTO {
     @NotBlank
     @Size(max = 255)
     private String diaChiChiTiet;
+    private String maDiaChiVanChuyen;
 
     private Boolean trangThai;
 }
