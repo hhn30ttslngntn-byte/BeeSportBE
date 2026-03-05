@@ -10,7 +10,10 @@ import jakarta.validation.constraints.*;
 @Builder
 public class XaDTO {
     private Integer id;
+
     private Integer idHuyen;
+
     private String tenXa;
+
     private Boolean trangThai;
 }

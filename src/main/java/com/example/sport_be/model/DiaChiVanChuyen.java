@@ -27,8 +27,17 @@ public class DiaChiVanChuyen {
     @Column(name = "ma_dia_chi_van_chuyen", length = 50)
     private String maDiaChiVanChuyen;
 
+    @Column(name = "ten_nguoi_nhan", length = 150)
+    private String tenNguoiNhan;
+
+    @Column(name = "so_dien_thoai", length = 20)
+    private String soDienThoai;
+
     @Column(name = "dia_chi_chi_tiet", length = 255)
     private String diaChiChiTiet;
+
+    @Column(name = "la_mac_dinh")
+    private Boolean laMacDinh;
 
     @Column(name = "trang_thai")
     private Boolean trangThai;
