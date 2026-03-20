@@ -20,11 +20,15 @@ public class SanPham {
     @JoinColumn(name = "id_danh_muc")
     private DanhMuc danhMuc;
 
+    @ManyToOne
+    @JoinColumn(name = "id_thuong_hieu")
+    private ThuongHieu thuongHieu;
+
     @Column(name = "ma_san_pham", length = 50, unique = true)
     private String ma;
 
     @Column(name = "ten_san_pham", length = 200)
-    private String ten;
+    private String tenSanPham;
 
     @Column(name = "gia_goc")
     private BigDecimal giaGoc;

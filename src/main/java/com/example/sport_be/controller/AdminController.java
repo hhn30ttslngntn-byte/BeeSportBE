@@ -21,9 +21,14 @@ public class AdminController {
         return ResponseEntity.ok(adminService.getAllProducts());
     }
 
+    @GetMapping("/products/{id}")
+    public ResponseEntity<Object> getProductById(@PathVariable Integer id) {
+        return ResponseEntity.ok(adminService.getProductDetail(id));
+    }
+
     @PostMapping("/products")
-    public ResponseEntity<SanPham> saveProduct(@RequestBody SanPham sanPham) {
-        return ResponseEntity.ok(adminService.saveProduct(sanPham));
+    public ResponseEntity<SanPham> saveProduct(@RequestBody com.example.sport_be.dto.ProductSaveRequest request) {
+        return ResponseEntity.ok(adminService.saveProductWithVariants(request.getProduct(), request.getVariants()));
     }
 
     @DeleteMapping("/products/{id}")
@@ -32,10 +37,26 @@ public class AdminController {
         return ResponseEntity.ok().build();
     }
 
+    @PutMapping("/products/{id}/toggle-status")
+    public ResponseEntity<Void> toggleProductStatus(@PathVariable Integer id) {
+        adminService.toggleProductStatus(id);
+        return ResponseEntity.ok().build();
+    }
+
+    @PostMapping("/product-details/bulk")
+    public ResponseEntity<List<SanPhamChiTiet>> saveProductDetails(@RequestBody List<SanPhamChiTiet> details) {
+        return ResponseEntity.ok(adminService.saveProductDetails(details));
+    }
+
     // --- Category ---
     @GetMapping("/categories")
     public ResponseEntity<List<DanhMuc>> getAllCategories() {
         return ResponseEntity.ok(adminService.getAllCategories());
+    }
+
+    @GetMapping("/brands")
+    public ResponseEntity<List<ThuongHieu>> getAllBrands() {
+        return ResponseEntity.ok(adminService.getAllBrands());
     }
 
     @PostMapping("/categories")
@@ -60,10 +81,126 @@ public class AdminController {
         return ResponseEntity.ok(adminService.getAllBills());
     }
 
+    @PutMapping("/bills/{id}/status")
+    public ResponseEntity<HoaDon> updateBillStatus(@PathVariable Integer id, @RequestBody String status) {
+        return ResponseEntity.ok(adminService.updateBillStatus(id, status));
+    }
+
+    @GetMapping("/bills/{id}")
+    public ResponseEntity<Object> getBillDetail(@PathVariable Integer id) {
+        return ResponseEntity.ok(adminService.getBillDetail(id));
+    }
+
     // --- Voucher ---
     @GetMapping("/vouchers")
     public ResponseEntity<List<MaGiamGia>> getAllVouchers() {
         return ResponseEntity.ok(adminService.getAllVouchers());
+    }
+
+    @GetMapping("/vouchers/{id}")
+    public ResponseEntity<MaGiamGia> getVoucherById(@PathVariable Integer id) {
+        return ResponseEntity.ok(adminService.getVoucherById(id));
+    }
+
+    @PostMapping("/vouchers")
+    public ResponseEntity<MaGiamGia> saveVoucher(@RequestBody MaGiamGia voucher) {
+        return ResponseEntity.ok(adminService.saveVoucher(voucher));
+    }
+
+    @DeleteMapping("/vouchers/{id}")
+    public ResponseEntity<Void> deleteVoucher(@PathVariable Integer id) {
+        adminService.deleteVoucher(id);
+        return ResponseEntity.ok().build();
+    }
+
+    // --- Promotion (DotGiamGia) ---
+    @GetMapping("/promotions")
+    public ResponseEntity<List<DotGiamGia>> getAllPromotions() {
+        return ResponseEntity.ok(adminService.getAllPromotions());
+    }
+
+    @GetMapping("/promotions/{id}")
+    public ResponseEntity<DotGiamGia> getPromotionById(@PathVariable Integer id) {
+        return ResponseEntity.ok(adminService.getPromotionById(id));
+    }
+
+    @GetMapping("/promotions/{id}/products")
+    public ResponseEntity<List<Integer>> getProductIdsForPromotion(@PathVariable Integer id) {
+        return ResponseEntity.ok(adminService.getProductIdsForPromotion(id));
+    }
+
+    @PostMapping("/promotions")
+    public ResponseEntity<DotGiamGia> savePromotion(@RequestBody com.example.sport_be.dto.PromotionSaveRequest request) {
+        return ResponseEntity.ok(adminService.savePromotion(request.getPromotion(), request.getProductIds()));
+    }
+
+    @DeleteMapping("/promotions/{id}")
+    public ResponseEntity<Void> deletePromotion(@PathVariable Integer id) {
+        adminService.deletePromotion(id);
+        return ResponseEntity.ok().build();
+    }
+
+    @GetMapping("/payment-methods")
+    public ResponseEntity<List<PtThanhToan>> getAllPaymentMethods() {
+        return ResponseEntity.ok(adminService.getAllPaymentMethods());
+    }
+
+    // --- POS ---
+    @GetMapping("/pos/invoices")
+    public ResponseEntity<List<GioHang>> getWaitingInvoices() {
+        return ResponseEntity.ok(adminService.getWaitingInvoices());
+    }
+
+    @GetMapping("/pos/invoices/{id}")
+    public ResponseEntity<Object> getWaitingInvoiceDetail(@PathVariable Integer id) {
+        return ResponseEntity.ok(adminService.getWaitingInvoiceDetail(id));
+    }
+
+    @PostMapping("/pos/invoices")
+    public ResponseEntity<GioHang> createWaitingInvoice() {
+        return ResponseEntity.ok(adminService.createWaitingInvoice());
+    }
+
+    @PostMapping("/pos/invoices/{id}/details")
+    public ResponseEntity<Void> addInvoiceDetail(@PathVariable Integer id, @RequestParam Integer spctId, @RequestParam Integer quantity) {
+        adminService.addInvoiceDetail(id, spctId, quantity);
+        return ResponseEntity.ok().build();
+    }
+
+    @DeleteMapping("/pos/details/{detailId}")
+    public ResponseEntity<Void> removeInvoiceDetail(@PathVariable Integer detailId) {
+        adminService.removeInvoiceDetail(detailId);
+        return ResponseEntity.ok().build();
+    }
+
+    @PutMapping("/pos/details/{detailId}/quantity")
+    public ResponseEntity<Void> updateInvoiceQuantity(@PathVariable Integer detailId, @RequestParam Integer quantity) {
+        adminService.updateInvoiceQuantity(detailId, quantity);
+        return ResponseEntity.ok().build();
+    }
+
+    @PutMapping("/pos/invoices/{id}/customer")
+    public ResponseEntity<Void> updateInvoiceCustomer(@PathVariable Integer id, @RequestParam Integer customerId) {
+        adminService.updateInvoiceCustomer(id, customerId);
+        return ResponseEntity.ok().build();
+    }
+
+    @PutMapping("/pos/invoices/{id}/voucher")
+    public ResponseEntity<Void> applyVoucher(@PathVariable Integer id, @RequestParam String voucherCode) {
+        adminService.applyVoucher(id, voucherCode);
+        return ResponseEntity.ok().build();
+    }
+
+    @PostMapping("/pos/invoices/{id}/checkout")
+    public ResponseEntity<Void> checkoutPOS(@PathVariable Integer id, @RequestParam Integer paymentMethodId, @RequestBody(required = false) String note, @RequestParam(required = false) Integer customerId) {
+        adminService.checkoutPOS(id, paymentMethodId, note, customerId);
+        return ResponseEntity.ok().build();
+    }
+
+    @DeleteMapping("/pos/invoices/{id}")
+    public ResponseEntity<Void> deleteWaitingInvoice(@PathVariable Integer id) {
+        adminService.deleteWaitingInvoice(id);
+        return ResponseEntity.ok().build();
     }
 
     // --- Attributes ---

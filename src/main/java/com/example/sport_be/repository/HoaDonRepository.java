@@ -7,5 +7,6 @@ import java.util.List;
 
 @Repository
 public interface HoaDonRepository extends JpaRepository<HoaDon, Integer> {
-    List<HoaDon> findByNguoiDungId(Integer nguoiDungId);
+    List<HoaDon> findByNguoiDungIdOrderByNgayTaoDesc(Integer nguoiDungId);
+    List<HoaDon> findByTrangThaiDon(String trangThaiDon);
 }

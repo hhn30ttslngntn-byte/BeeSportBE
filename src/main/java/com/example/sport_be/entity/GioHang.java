@@ -18,6 +18,9 @@ public class GioHang {
     @Column(name = "ma_gio_hang", unique = true)
     private String ma;
 
+    @Column(name = "loai_gio_hang")
+    private String loaiGioHang;
+
     @ManyToOne
     @JoinColumn(name = "id_nguoi_dung")
     private NguoiDung nguoiDung;

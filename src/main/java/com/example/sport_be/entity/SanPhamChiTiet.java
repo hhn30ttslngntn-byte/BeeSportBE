@@ -31,11 +31,18 @@ public class SanPhamChiTiet {
     @JoinColumn(name = "id_chat_lieu")
     private ChatLieu chatLieu;
 
+    @ManyToOne
+    @JoinColumn(name = "id_thuong_hieu")
+    private ThuongHieu thuongHieu;
+
     @Column(name = "ma_san_pham_chi_tiet", length = 50, unique = true)
     private String ma;
 
     @Column(name = "so_luong")
     private Integer soLuong;
+
+    @Column(name = "so_luong_da_ban")
+    private Integer soLuongDaBan;
 
     @Column(name = "gia_ban")
     private BigDecimal giaBan;

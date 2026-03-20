@@ -27,6 +27,10 @@ public class HoaDon {
     @JoinColumn(name = "id_ma_giam_gia")
     private MaGiamGia maGiamGia;
 
+    @ManyToOne
+    @JoinColumn(name = "id_pttt")
+    private PtThanhToan ptThanhToan;
+
     @Column(name = "ten_nguoi_nhan")
     private String tenNguoiNhan;
 
@@ -46,7 +50,7 @@ public class HoaDon {
     private String diaChiChiTiet;
 
     @Column(name = "tong_tien_hang")
-    private BigDecimal tongTienHang;
+    private BigDecimal tongTienHang = BigDecimal.ZERO;
 
     @Column(name = "tien_giam")
     private BigDecimal tienGiam = BigDecimal.ZERO;
@@ -55,10 +59,13 @@ public class HoaDon {
     private BigDecimal phiVanChuyen = BigDecimal.ZERO;
 
     @Column(name = "tong_thanh_toan")
-    private BigDecimal tongThanhToan;
+    private BigDecimal tongThanhToan = BigDecimal.ZERO;
 
     @Column(name = "trang_thai_don")
     private String trangThaiDon;
+
+    @Column(name = "loai_don_hang")
+    private String loaiDonHang;
 
     @Column(name = "ghi_chu")
     private String ghiChu;

@@ -10,6 +10,7 @@ public class OrderRequest {
     private Integer userId;
     private List<Integer> cartItemIds;
     private Integer voucherId;
+    private Integer paymentMethodId;
     private String tenNguoiNhan;
     private String soDienThoai;
     private String tinh;
