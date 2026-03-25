@@ -22,6 +22,7 @@ public class ProductResponse {
     private DanhMuc danhMuc;
     private ThuongHieu thuongHieu;
     private BigDecimal giaGoc;
+    private BigDecimal giaSauGiam; // Calculated promotion price
     private BigDecimal giaBanMin; // New field for variants' selling price
     private Boolean trangThai;
     private List<HinhAnhSanPham> hinhAnhs;

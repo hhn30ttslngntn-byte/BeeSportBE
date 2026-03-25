@@ -2,9 +2,11 @@ package com.example.sport_be.controller;
 
 import com.example.sport_be.entity.*;
 import com.example.sport_be.service.AdminService;
+import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
 
@@ -14,6 +16,7 @@ import java.util.List;
 @CrossOrigin(origins = "*")
 public class AdminController {
     private final AdminService adminService;
+    private final HttpServletRequest httpServletRequest;
 
     // --- Product ---
     @GetMapping("/products")
@@ -28,7 +31,13 @@ public class AdminController {
 
     @PostMapping("/products")
     public ResponseEntity<SanPham> saveProduct(@RequestBody com.example.sport_be.dto.ProductSaveRequest request) {
-        return ResponseEntity.ok(adminService.saveProductWithVariants(request.getProduct(), request.getVariants()));
+        return ResponseEntity.ok(adminService.saveProductWithVariants(request.getProduct(), request.getVariants(), request.getImageUrls()));
+    }
+
+    @PostMapping("/products/upload-images")
+    public ResponseEntity<List<String>> uploadProductImages(@RequestParam("files") List<MultipartFile> files) {
+        String baseUrl = httpServletRequest.getScheme() + "://" + httpServletRequest.getServerName() + ":" + httpServletRequest.getServerPort();
+        return ResponseEntity.ok(adminService.uploadProductImages(files, baseUrl));
     }
 
     @DeleteMapping("/products/{id}")
@@ -59,6 +68,11 @@ public class AdminController {
         return ResponseEntity.ok(adminService.getAllBrands());
     }
 
+    @PostMapping("/brands")
+    public ResponseEntity<ThuongHieu> saveBrand(@RequestBody ThuongHieu brand) {
+        return ResponseEntity.ok(adminService.saveBrand(brand));
+    }
+
     @PostMapping("/categories")
     public ResponseEntity<DanhMuc> saveCategory(@RequestBody DanhMuc danhMuc) {
         return ResponseEntity.ok(adminService.saveCategory(danhMuc));
@@ -73,6 +87,11 @@ public class AdminController {
     @GetMapping("/users/role/{roleId}")
     public ResponseEntity<List<NguoiDung>> getUsersByRole(@PathVariable Integer roleId) {
         return ResponseEntity.ok(adminService.getUsersByRole(roleId));
+    }
+
+    @PostMapping("/users")
+    public ResponseEntity<NguoiDung> saveUser(@RequestBody NguoiDung user) {
+        return ResponseEntity.ok(adminService.saveUser(user));
     }
 
     // --- Bill ---
@@ -191,6 +210,11 @@ public class AdminController {
         return ResponseEntity.ok().build();
     }
 
+    @GetMapping("/pos/invoices/{id}/applicable-vouchers")
+    public ResponseEntity<List<MaGiamGia>> getApplicableVouchersForInvoice(@PathVariable Integer id) {
+        return ResponseEntity.ok(adminService.getApplicableVouchersForInvoice(id));
+    }
+
     @PostMapping("/pos/invoices/{id}/checkout")
     public ResponseEntity<Void> checkoutPOS(@PathVariable Integer id, @RequestParam Integer paymentMethodId, @RequestBody(required = false) String note, @RequestParam(required = false) Integer customerId) {
         adminService.checkoutPOS(id, paymentMethodId, note, customerId);
@@ -210,4 +234,11 @@ public class AdminController {
     public ResponseEntity<List<KichThuoc>> getAllSizes() { return ResponseEntity.ok(adminService.getAllSizes()); }
     @GetMapping("/materials")
     public ResponseEntity<List<ChatLieu>> getAllMaterials() { return ResponseEntity.ok(adminService.getAllMaterials()); }
+
+    @PostMapping("/colors")
+    public ResponseEntity<MauSac> saveColor(@RequestBody MauSac color) { return ResponseEntity.ok(adminService.saveColor(color)); }
+    @PostMapping("/sizes")
+    public ResponseEntity<KichThuoc> saveSize(@RequestBody KichThuoc size) { return ResponseEntity.ok(adminService.saveSize(size)); }
+    @PostMapping("/materials")
+    public ResponseEntity<ChatLieu> saveMaterial(@RequestBody ChatLieu material) { return ResponseEntity.ok(adminService.saveMaterial(material)); }
 }

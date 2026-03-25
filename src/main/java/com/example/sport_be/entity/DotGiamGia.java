@@ -1,5 +1,6 @@
 package com.example.sport_be.entity;
 
+import com.fasterxml.jackson.annotation.JsonFormat;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
@@ -29,10 +30,12 @@ public class DotGiamGia {
     private BigDecimal giaTriGiam;
 
     @Column(name = "ngay_bat_dau")
-    private LocalDateTime ngayBat_dau;
+    @JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss", shape = JsonFormat.Shape.STRING)
+    private LocalDateTime ngayBatDau;
 
     @Column(name = "ngay_ket_thuc")
-    private LocalDateTime ngayKet_thuc;
+    @JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss", shape = JsonFormat.Shape.STRING)
+    private LocalDateTime ngayKetHuc;
 
     @Column(name = "trang_thai")
     private Boolean trangThai;

@@ -9,4 +9,5 @@ import java.util.List;
 public class ProductSaveRequest {
     private SanPham product;
     private List<SanPhamChiTiet> variants;
+    private List<String> imageUrls;
 }

@@ -306,6 +306,7 @@
 		id_nguoi_dung INT NOT NULL,
 		id_ma_giam_gia INT NULL,
 		id_pttt INT NULL,
+		loai_don_hang NVARCHAR(20) DEFAULT 'ONLINE',
 
 		ten_nguoi_nhan NVARCHAR(150) NOT NULL,
 		so_dien_thoai NVARCHAR(20) NOT NULL,

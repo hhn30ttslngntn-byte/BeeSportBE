@@ -1,6 +1,7 @@
 package com.example.sport_be.entity;
 
 import jakarta.persistence.*;
+import org.hibernate.annotations.Nationalized;
 import lombok.Getter;
 import lombok.Setter;
 import java.math.BigDecimal;
@@ -16,7 +17,8 @@ public class MaGiamGia {
     @Column(name = "id_ma_giam_gia")
     private Integer id;
 
-    @Column(name = "ma_code", unique = true)
+    @Nationalized
+    @Column(name = "ma_code", length = 50, unique = true)
     private String maCode;
 
     @Column(name = "kieu_giam_gia")

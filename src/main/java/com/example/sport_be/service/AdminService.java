@@ -5,9 +5,18 @@ import com.example.sport_be.repository.*;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.multipart.MultipartFile;
 
+import java.io.IOException;
 import java.math.BigDecimal;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.time.LocalDateTime;
 import java.util.List;
+import java.text.Normalizer;
+import java.util.ArrayList;
+import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
@@ -30,10 +39,43 @@ public class AdminService {
     private final LichSuThanhToanRepository lichSuThanhToanRepository;
     private final GioHangRepository gioHangRepository;
     private final GioHangChiTietRepository gioHangChiTietRepository;
+    private final HinhAnhSanPhamRepository hinhAnhSanPhamRepository;
 
     // --- Product ---
     public List<SanPham> getAllProducts() {
-        return sanPhamRepository.findAll();
+        List<SanPham> products = sanPhamRepository.findAll();
+        LocalDateTime now = LocalDateTime.now();
+        
+        for (SanPham sp : products) {
+            List<SanPhamChiTiet> details = sanPhamChiTietRepository.findBySanPhamId(sp.getId());
+            int tongSoLuong = details.stream()
+                    .map(SanPhamChiTiet::getSoLuong)
+                    .filter(java.util.Objects::nonNull)
+                    .mapToInt(Integer::intValue)
+                    .sum();
+            sp.setTongSoLuong(tongSoLuong);
+            // Tìm đợt giảm giá đang hoạt động cho sản phẩm này
+            GiamGiaSanPham activeGG = giamGiaSanPhamRepository.findAll().stream()
+                .filter(gg -> gg.getSanPham().getId().equals(sp.getId()))
+                .filter(gg -> gg.getDotGiamGia().getTrangThai())
+                .filter(gg -> gg.getDotGiamGia().getNgayBatDau().isBefore(now) && gg.getDotGiamGia().getNgayKetHuc().isAfter(now))
+                .findFirst().orElse(null);
+            
+            if (activeGG != null) {
+                DotGiamGia dgg = activeGG.getDotGiamGia();
+                sp.setTenKhuyenMai(dgg.getTenDot());
+                
+                if ("PERCENT".equals(dgg.getKieuGiamGia())) {
+                    BigDecimal giam = sp.getGiaGoc().multiply(dgg.getGiaTriGiam().divide(new BigDecimal(100)));
+                    sp.setGiaSauGiam(sp.getGiaGoc().subtract(giam));
+                } else {
+                    sp.setGiaSauGiam(sp.getGiaGoc().subtract(dgg.getGiaTriGiam()));
+                }
+            } else {
+                sp.setGiaSauGiam(sp.getGiaGoc());
+            }
+        }
+        return products;
     }
 
     public SanPham getProductById(Integer id) {
@@ -43,6 +85,28 @@ public class AdminService {
 
     public Object getProductDetail(Integer id) {
         SanPham sp = getProductById(id);
+        
+        // Tính giá sau giảm cho sản phẩm cha
+        LocalDateTime now = LocalDateTime.now();
+        GiamGiaSanPham activeGG = giamGiaSanPhamRepository.findAll().stream()
+            .filter(gg -> gg.getSanPham().getId().equals(sp.getId()))
+            .filter(gg -> gg.getDotGiamGia().getTrangThai())
+            .filter(gg -> gg.getDotGiamGia().getNgayBatDau().isBefore(now) && gg.getDotGiamGia().getNgayKetHuc().isAfter(now))
+            .findFirst().orElse(null);
+        
+        if (activeGG != null) {
+            DotGiamGia dgg = activeGG.getDotGiamGia();
+            sp.setTenKhuyenMai(dgg.getTenDot());
+            if ("PERCENT".equals(dgg.getKieuGiamGia())) {
+                BigDecimal giam = sp.getGiaGoc().multiply(dgg.getGiaTriGiam().divide(new BigDecimal(100)));
+                sp.setGiaSauGiam(sp.getGiaGoc().subtract(giam));
+            } else {
+                sp.setGiaSauGiam(sp.getGiaGoc().subtract(dgg.getGiaTriGiam()));
+            }
+        } else {
+            sp.setGiaSauGiam(sp.getGiaGoc());
+        }
+
         List<SanPhamChiTiet> details = sanPhamChiTietRepository.findBySanPhamId(id);
         
         return new Object() {
@@ -52,7 +116,7 @@ public class AdminService {
     }
 
     @Transactional
-    public SanPham saveProductWithVariants(SanPham sanPham, List<SanPhamChiTiet> variants) {
+    public SanPham saveProductWithVariants(SanPham sanPham, List<SanPhamChiTiet> variants, List<String> imageUrls) {
         // 1. Kiểm tra mã sản phẩm (chỉ khi thêm mới)
         if (sanPham.getId() == null) {
             if (sanPhamRepository.findByMa(sanPham.getMa()).isPresent()) {
@@ -102,7 +166,60 @@ public class AdminService {
             sanPhamChiTietRepository.saveAll(variants);
         }
 
+        syncProductImages(savedProduct, imageUrls);
+
         return savedProduct;
+    }
+
+    public List<String> uploadProductImages(List<MultipartFile> files, String baseUrl) {
+        try {
+            Path uploadDir = Paths.get("uploads", "products").toAbsolutePath().normalize();
+            Files.createDirectories(uploadDir);
+
+            List<String> uploadedUrls = new ArrayList<>();
+            for (MultipartFile file : files) {
+                if (file == null || file.isEmpty()) continue;
+
+                String originalName = file.getOriginalFilename() != null ? file.getOriginalFilename() : "image";
+                String extension = "";
+                int lastDot = originalName.lastIndexOf('.');
+                if (lastDot >= 0) {
+                    extension = originalName.substring(lastDot);
+                }
+
+                String fileName = UUID.randomUUID() + extension;
+                Path target = uploadDir.resolve(fileName);
+                file.transferTo(target.toFile());
+                uploadedUrls.add(baseUrl + "/uploads/products/" + fileName);
+            }
+            return uploadedUrls;
+        } catch (IOException e) {
+            throw new RuntimeException("Khong the tai anh len", e);
+        }
+    }
+
+    private void syncProductImages(SanPham product, List<String> imageUrls) {
+        List<HinhAnhSanPham> currentImages = hinhAnhSanPhamRepository.findBySanPhamId(product.getId());
+        if (!currentImages.isEmpty()) {
+            hinhAnhSanPhamRepository.deleteAll(currentImages);
+        }
+
+        if (imageUrls == null || imageUrls.isEmpty()) {
+            return;
+        }
+
+        List<HinhAnhSanPham> newImages = imageUrls.stream()
+                .filter(url -> url != null && !url.isBlank())
+                .map(url -> {
+                    HinhAnhSanPham image = new HinhAnhSanPham();
+                    image.setSanPham(product);
+                    image.setUrl(url);
+                    image.setTrangThai(true);
+                    return image;
+                })
+                .toList();
+
+        hinhAnhSanPhamRepository.saveAll(newImages);
     }
 
     public void deleteProduct(Integer id) {
@@ -140,6 +257,13 @@ public class AdminService {
         return thuongHieuRepository.findByTrangThaiTrue();
     }
 
+    public ThuongHieu saveBrand(ThuongHieu brand) {
+        if (brand.getMaThuongHieu() == null || brand.getMaThuongHieu().isBlank()) {
+            brand.setMaThuongHieu(generateAttributeCode(brand.getTenThuongHieu()));
+        }
+        return thuongHieuRepository.save(brand);
+    }
+
     // --- User (Staff & Customer) ---
     public List<NguoiDung> getAllUsers() {
         return nguoiDungRepository.findAll();
@@ -147,6 +271,13 @@ public class AdminService {
 
     public List<NguoiDung> getUsersByRole(Integer roleId) {
         return nguoiDungRepository.findByVaiTroId(roleId);
+    }
+
+    public NguoiDung saveUser(NguoiDung user) {
+        if (user.getMaNguoiDung() == null || user.getMaNguoiDung().isEmpty()) {
+            user.setMaNguoiDung("USER" + System.currentTimeMillis());
+        }
+        return nguoiDungRepository.save(user);
     }
 
     // --- Bill ---
@@ -280,9 +411,29 @@ public class AdminService {
         GioHang gh = gioHangRepository.findById(id).orElseThrow();
         SanPhamChiTiet spct = sanPhamChiTietRepository.findById(spctId).orElseThrow();
         
+        // Tính giá sau giảm nếu có khuyến mãi
+        BigDecimal giaBan = spct.getGiaBan();
+        LocalDateTime now = LocalDateTime.now();
+        
+        GiamGiaSanPham activeGG = giamGiaSanPhamRepository.findAll().stream()
+            .filter(gg -> gg.getSanPham().getId().equals(spct.getSanPham().getId()))
+            .filter(gg -> gg.getDotGiamGia().getTrangThai())
+            .filter(gg -> gg.getDotGiamGia().getNgayBatDau().isBefore(now) && gg.getDotGiamGia().getNgayKetHuc().isAfter(now))
+            .findFirst().orElse(null);
+            
+        if (activeGG != null) {
+            DotGiamGia dgg = activeGG.getDotGiamGia();
+            if ("PERCENT".equals(dgg.getKieuGiamGia())) {
+                BigDecimal giam = giaBan.multiply(dgg.getGiaTriGiam().divide(new BigDecimal(100)));
+                giaBan = giaBan.subtract(giam);
+            } else {
+                giaBan = giaBan.subtract(dgg.getGiaTriGiam());
+            }
+        }
+        
         // Sử dụng logic nativeAddToCart hoặc thủ công để tránh trùng lặp trong giỏ
         String ma = "GHCT-POS-" + System.currentTimeMillis();
-        gioHangChiTietRepository.nativeAddToCart(id, spctId, quantity, spct.getGiaBan(), ma);
+        gioHangChiTietRepository.nativeAddToCart(id, spctId, quantity, giaBan, ma);
     }
 
     @Transactional
@@ -312,13 +463,62 @@ public class AdminService {
         gioHangRepository.save(gh);
     }
 
+    public List<MaGiamGia> getApplicableVouchersForInvoice(Integer invoiceId) {
+        GioHang gh = gioHangRepository.findById(invoiceId)
+                .orElseThrow(() -> new RuntimeException("Không tìm thấy hóa đơn"));
+
+        List<GioHangChiTiet> items = gioHangChiTietRepository.findByGioHangId(invoiceId);
+        java.math.BigDecimal promoTotal = items.stream()
+                .filter(item -> item.getSanPhamChiTiet() != null && item.getDonGia() != null && item.getSanPhamChiTiet().getGiaBan() != null)
+                .filter(item -> item.getDonGia().compareTo(item.getSanPhamChiTiet().getGiaBan()) < 0)
+                .map(item -> item.getDonGia().multiply(java.math.BigDecimal.valueOf(item.getSoLuong())))
+                .reduce(java.math.BigDecimal.ZERO, java.math.BigDecimal::add);
+
+        if (promoTotal.compareTo(java.math.BigDecimal.ZERO) <= 0) {
+            return java.util.Collections.emptyList();
+        }
+
+        java.time.LocalDateTime now = java.time.LocalDateTime.now();
+
+        return maGiamGiaRepository.findByTrangThaiTrue().stream()
+                .filter(v -> v.getNgayBatDau() != null && v.getNgayKetHuc() != null && !now.isBefore(v.getNgayBatDau()) && !now.isAfter(v.getNgayKetHuc()))
+                .filter(v -> v.getSoLuong() == null || v.getSoLuongDaDung() == null || v.getSoLuong() > v.getSoLuongDaDung())
+                .filter(v -> v.getGiaTriToiThieu() == null || promoTotal.compareTo(v.getGiaTriToiThieu()) >= 0)
+                .collect(java.util.stream.Collectors.toList());
+    }
+
     @Transactional
     public void applyVoucher(Integer id, String voucherCode) {
-        // Đối với POS dùng GioHang, việc áp dụng voucher có thể xử lý lúc checkout 
-        // hoặc lưu tạm vào một trường trong GioHang (nếu có). 
-        // Hiện tại để tránh lỗi biên dịch, ta có thể tìm voucher để validate trước.
-        maGiamGiaRepository.findByMaCode(voucherCode)
+        MaGiamGia voucher = maGiamGiaRepository.findByMaCode(voucherCode)
                 .orElseThrow(() -> new RuntimeException("Voucher không tồn tại"));
+
+        java.time.LocalDateTime now = java.time.LocalDateTime.now();
+        if (voucher.getNgayBatDau() != null && now.isBefore(voucher.getNgayBatDau())) {
+            throw new RuntimeException("Voucher chưa hiệu lực");
+        }
+        if (voucher.getNgayKetHuc() != null && now.isAfter(voucher.getNgayKetHuc())) {
+            throw new RuntimeException("Voucher đã hết hạn");
+        }
+        if (voucher.getSoLuong() != null && voucher.getSoLuongDaDung() != null && voucher.getSoLuong() <= voucher.getSoLuongDaDung()) {
+            throw new RuntimeException("Voucher đã hết lượt sử dụng");
+        }
+
+        List<GioHangChiTiet> items = gioHangChiTietRepository.findByGioHangId(id);
+        java.math.BigDecimal promoTotal = items.stream()
+                .filter(item -> item.getSanPhamChiTiet() != null && item.getDonGia() != null && item.getSanPhamChiTiet().getGiaBan() != null)
+                .filter(item -> item.getDonGia().compareTo(item.getSanPhamChiTiet().getGiaBan()) < 0)
+                .map(item -> item.getDonGia().multiply(java.math.BigDecimal.valueOf(item.getSoLuong())))
+                .reduce(java.math.BigDecimal.ZERO, java.math.BigDecimal::add);
+
+        if (promoTotal.compareTo(java.math.BigDecimal.ZERO) <= 0) {
+            throw new RuntimeException("Voucher chỉ áp dụng cho sản phẩm đang trong đợt giảm giá");
+        }
+
+        if (voucher.getGiaTriToiThieu() != null && promoTotal.compareTo(voucher.getGiaTriToiThieu()) < 0) {
+            throw new RuntimeException("Tổng giá trị hàng giảm giá chưa đạt điều kiện tối thiểu của voucher");
+        }
+
+        // Không cập nhật data trên server để nếu cần persis có thể thêm trường vào GioHang.
     }
 
     @Transactional
@@ -399,4 +599,36 @@ public class AdminService {
     public List<MauSac> getAllColors() { return mauSacRepository.findAll(); }
     public List<KichThuoc> getAllSizes() { return kichThuocRepository.findAll(); }
     public List<ChatLieu> getAllMaterials() { return chatLieuRepository.findAll(); }
+
+    public MauSac saveColor(MauSac color) {
+        if (color.getMa() == null || color.getMa().isBlank()) {
+            color.setMa(generateAttributeCode(color.getTen()));
+        }
+        return mauSacRepository.save(color);
+    }
+
+    public KichThuoc saveSize(KichThuoc size) {
+        if (size.getMa() == null || size.getMa().isBlank()) {
+            size.setMa(generateAttributeCode(size.getTen()));
+        }
+        return kichThuocRepository.save(size);
+    }
+
+    public ChatLieu saveMaterial(ChatLieu material) { return chatLieuRepository.save(material); }
+
+    private String generateAttributeCode(String value) {
+        if (value == null || value.isBlank()) {
+            return "ATTR-" + System.currentTimeMillis();
+        }
+
+        String normalized = Normalizer.normalize(value, Normalizer.Form.NFD)
+                .replaceAll("\\p{M}+", "")
+                .replace('đ', 'd')
+                .replace('Đ', 'D')
+                .replaceAll("[^A-Za-z0-9]+", "_")
+                .replaceAll("^_+|_+$", "")
+                .toUpperCase();
+
+        return normalized.isBlank() ? "ATTR-" + System.currentTimeMillis() : normalized;
+    }
 }

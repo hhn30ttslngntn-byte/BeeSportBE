@@ -1,5 +1,6 @@
 package com.example.sport_be.entity;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
@@ -17,6 +18,7 @@ public class SanPhamChiTiet {
 
     @ManyToOne
     @JoinColumn(name = "id_san_pham")
+    @JsonIgnoreProperties({"details"})
     private SanPham sanPham;
 
     @ManyToOne

@@ -3,6 +3,7 @@ package com.example.sport_be.entity;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import java.math.BigDecimal;
 import java.util.List;
 
@@ -38,4 +39,17 @@ public class SanPham {
 
     @OneToMany(mappedBy = "sanPham")
     private List<HinhAnhSanPham> hinhAnhs;
+
+    @OneToMany(mappedBy = "sanPham")
+    @JsonIgnore
+    private List<SanPhamChiTiet> details;
+
+    @Transient
+    private BigDecimal giaSauGiam;
+
+    @Transient
+    private String tenKhuyenMai;
+
+    @Transient
+    private Integer tongSoLuong;
 }

@@ -24,32 +24,46 @@ public class ChatController {
     @Value("${gemini.api.key}")
     private String apiKey;
 
-    private final String GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=";
+    private final String GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key=";
 
     @PostMapping("/chat")
     public ResponseEntity<String> askAI(@RequestBody Map<String, String> payload) {
         String userMessage = payload.get("message");
+        if (userMessage == null || userMessage.trim().isEmpty()) {
+            return ResponseEntity.badRequest().body("Tin nhắn không được để trống");
+        }
         
-        // Tìm kiếm sản phẩm liên quan trong DB
-        List<SanPham> relevantProducts = sanPhamRepository.findByTenSanPhamContainingIgnoreCaseAndTrangThaiTrue(userMessage);
-        
-        String productContext = relevantProducts.isEmpty() ? "" : 
-            "\nDanh sách sản phẩm phù hợp trong hệ thống:\n" + 
-            relevantProducts.stream()
-                .map(p -> "- ID: " + p.getId() + ", Tên: " + p.getTenSanPham() + ", Giá: " + p.getGiaGoc())
-                .collect(Collectors.joining("\n"));
-
-        String systemPrompt = "Bạn là Bee Bot, trợ lý ảo của cửa hàng BeeSport. " +
-            "Nhiệm vụ của bạn là tư vấn và giúp khách hàng tìm kiếm sản phẩm thể thao. " +
-            "Khi giới thiệu sản phẩm, BẮT BUỘC phải sử dụng định dạng [PRODUCT:id:tên] để hệ thống hiển thị link. " +
-            "Ví dụ: 'Bạn có thể xem sản phẩm [PRODUCT:1:Áo Nike Sport] đang rất hot'. " +
-            "Nếu khách hàng hỏi về sản phẩm, hãy dựa vào danh sách dưới đây để trả lời. " +
-            "Nếu không tìm thấy sản phẩm cụ thể trong danh sách, hãy tư vấn chung và mời khách hàng xem danh mục sản phẩm. " +
-            productContext + 
-            "\n\nCâu hỏi của khách hàng: " + userMessage;
-
         try {
+            // Tìm kiếm sản phẩm liên quan trong DB dựa trên từ khóa người dùng
+            List<SanPham> relevantProducts = sanPhamRepository.findByTenSanPhamContainingIgnoreCaseAndTrangThaiTrue(userMessage);
+            
+            // Nếu không tìm thấy sản phẩm cụ thể, lấy ngẫu nhiên 5 sản phẩm đang kinh doanh để AI có thể gợi ý
+            if (relevantProducts.isEmpty()) {
+                relevantProducts = sanPhamRepository.findAll().stream()
+                    .filter(SanPham::getTrangThai)
+                    .limit(5)
+                    .collect(Collectors.toList());
+            }
+            
+            String productContext = relevantProducts.isEmpty() ? "Không có sản phẩm nào trong hệ thống hiện tại." : 
+                "\nDANH SÁCH SẢN PHẨM THỰC TẾ TRONG CƠ SỞ DỮ LIỆU (CHỈ ĐƯỢC PHÉP GỢI Ý TỪ ĐÂY):\n" + 
+                relevantProducts.stream()
+                    .map(p -> "- ID: " + p.getId() + ", Tên: " + p.getTenSanPham() + ", Giá: " + p.getGiaGoc() + " VNĐ")
+                    .collect(Collectors.joining("\n"));
+
+            String systemPrompt = "Bạn là Bee Bot AI, trợ lý ảo cao cấp của cửa hàng BeeSport. " +
+                "PHONG CÁCH PHỤC VỤ: Chuyên nghiệp, thân thiện, am hiểu về thời trang thể thao và luôn sẵn lòng giúp đỡ. " +
+                "KHẢ NĂNG: Bạn có thể trả lời bất cứ câu hỏi nào của khách hàng (từ chào hỏi, tư vấn sản phẩm đến các kiến thức thể thao chung). " +
+                "QUY TẮC SẢN PHẨM: " +
+                "1. Khi tư vấn hoặc giới thiệu sản phẩm, BẮT BUỘC chỉ được dùng các sản phẩm có trong danh sách thực tế dưới đây. " +
+                "2. Sử dụng định dạng [PRODUCT:id:tên] để tạo liên kết sản phẩm. " +
+                "3. Nếu không có sản phẩm chính xác khách yêu cầu, hãy khéo léo gợi ý sản phẩm tương tự từ danh sách. " +
+                "4. Nếu khách hỏi về các vấn đề ngoài sản phẩm, hãy trả lời thông minh và tự nhiên, sau đó có thể dẫn dắt khéo léo về niềm đam mê thể thao. " +
+                productContext + 
+                "\n\nCâu hỏi của khách hàng: " + userMessage;
+
             if (apiKey == null || apiKey.isEmpty()) {
+                System.out.println("ChatController ERROR: API Key is missing");
                 return ResponseEntity.status(500).body("Lỗi: Chưa cấu hình API Key");
             }
 
@@ -63,21 +77,34 @@ public class ChatController {
             );
 
             String fullUrl = GEMINI_URL + apiKey;
-            String response = restTemplate.postForObject(fullUrl, requestBody, String.class);
+            String response;
+            try {
+                response = restTemplate.postForObject(fullUrl, requestBody, String.class);
+            } catch (org.springframework.web.client.HttpStatusCodeException e) {
+                System.out.println("Gemini API HTTP Error: " + e.getResponseBodyAsString());
+                return ResponseEntity.status(e.getStatusCode()).body("Lỗi từ Gemini API: " + e.getResponseBodyAsString());
+            } catch (Exception e) {
+                System.out.println("Gemini connection error: " + e.getMessage());
+                return ResponseEntity.status(500).body("Lỗi khi kết nối với Gemini API: " + e.getMessage());
+            }
+
+            if (response == null) {
+                return ResponseEntity.status(500).body("Gemini API không phản hồi.");
+            }
 
             JSONObject jsonResponse = new JSONObject(response);
             
-            if (jsonResponse.has("candidates")) {
-                String botAnswer = jsonResponse.getJSONArray("candidates")
-                        .getJSONObject(0)
-                        .getJSONObject("content")
-                        .getJSONArray("parts")
-                        .getJSONObject(0)
-                        .getString("text");
-                return ResponseEntity.ok(botAnswer);
-            } else {
-                return ResponseEntity.status(500).body("AI không thể trả lời câu hỏi này.");
+            if (jsonResponse.has("candidates") && !jsonResponse.getJSONArray("candidates").isEmpty()) {
+                JSONObject firstCandidate = jsonResponse.getJSONArray("candidates").getJSONObject(0);
+                if (firstCandidate.has("content") && firstCandidate.getJSONObject("content").has("parts")) {
+                    String botAnswer = firstCandidate.getJSONObject("content")
+                            .getJSONArray("parts")
+                            .getJSONObject(0)
+                            .getString("text");
+                    return ResponseEntity.ok(botAnswer);
+                }
             }
+            return ResponseEntity.status(500).body("Định dạng phản hồi từ AI không hợp lệ.");
         } catch (Exception e) {
             return ResponseEntity.status(500).body("Lỗi Backend: " + e.getMessage());
         }

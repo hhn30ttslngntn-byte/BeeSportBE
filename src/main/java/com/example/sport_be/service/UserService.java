@@ -1,6 +1,8 @@
 package com.example.sport_be.service;
 
 import com.example.sport_be.dto.CheckoutResponse;
+import com.example.sport_be.dto.AddressRequest;
+import com.example.sport_be.dto.AddressResponse;
 import com.example.sport_be.dto.OrderRequest;
 import com.example.sport_be.dto.OrderResponse;
 import com.example.sport_be.dto.ProductResponse;
@@ -32,10 +34,62 @@ public class UserService {
     private final DanhMucRepository danhMucRepository;
     private final ThuongHieuRepository thuongHieuRepository;
     private final MaGiamGiaRepository maGiamGiaRepository;
+    private final DiaChiVanChuyenRepository diaChiVanChuyenRepository;
+    private final TinhRepository tinhRepository;
+    private final HuyenRepository huyenRepository;
+    private final XaRepository xaRepository;
     private final PtThanhToanRepository ptThanhToanRepository;
-    private final LichSuHoaDonRepository lichSuHoaDonRepository; // Đưa lên đầu
+    private final LichSuHoaDonRepository lichSuHoaDonRepository;
+    private final DotGiamGiaRepository dotGiamGiaRepository;
+    private final GiamGiaSanPhamRepository giamGiaSanPhamRepository;
+    private final SanPhamYeuThichRepository sanPhamYeuThichRepository;
     private final VNPayService vnpayService;
     private final EntityManager entityManager;
+    
+    private BigDecimal getPromotionPrice(SanPham sp) {
+        BigDecimal giaGoc = sp.getGiaGoc();
+        java.time.LocalDateTime now = java.time.LocalDateTime.now();
+        
+        GiamGiaSanPham activeGG = giamGiaSanPhamRepository.findAll().stream()
+            .filter(gg -> gg.getSanPham().getId().equals(sp.getId()))
+            .filter(gg -> gg.getDotGiamGia().getTrangThai())
+            .filter(gg -> gg.getDotGiamGia().getNgayBatDau().isBefore(now) && gg.getDotGiamGia().getNgayKetHuc().isAfter(now))
+            .findFirst().orElse(null);
+            
+        if (activeGG != null) {
+            DotGiamGia dgg = activeGG.getDotGiamGia();
+            sp.setTenKhuyenMai(dgg.getTenDot());
+            if ("PERCENT".equals(dgg.getKieuGiamGia())) {
+                BigDecimal giam = giaGoc.multiply(dgg.getGiaTriGiam().divide(new BigDecimal(100)));
+                return giaGoc.subtract(giam);
+            } else {
+                return giaGoc.subtract(dgg.getGiaTriGiam());
+            }
+        }
+        return giaGoc;
+    }
+
+    private BigDecimal getPromotionPriceForVariant(SanPhamChiTiet spct) {
+        BigDecimal giaBan = spct.getGiaBan();
+        java.time.LocalDateTime now = java.time.LocalDateTime.now();
+        
+        GiamGiaSanPham activeGG = giamGiaSanPhamRepository.findAll().stream()
+            .filter(gg -> gg.getSanPham().getId().equals(spct.getSanPham().getId()))
+            .filter(gg -> gg.getDotGiamGia().getTrangThai())
+            .filter(gg -> gg.getDotGiamGia().getNgayBatDau().isBefore(now) && gg.getDotGiamGia().getNgayKetHuc().isAfter(now))
+            .findFirst().orElse(null);
+            
+        if (activeGG != null) {
+            DotGiamGia dgg = activeGG.getDotGiamGia();
+            if ("PERCENT".equals(dgg.getKieuGiamGia())) {
+                BigDecimal giam = giaBan.multiply(dgg.getGiaTriGiam().divide(new BigDecimal(100)));
+                return giaBan.subtract(giam);
+            } else {
+                return giaBan.subtract(dgg.getGiaTriGiam());
+            }
+        }
+        return giaBan;
+    }
 
     // --- Category ---
     public List<DanhMuc> getAllCategories() {
@@ -70,9 +124,9 @@ public class UserService {
     private ProductResponse convertToResponse(SanPham p) {
         List<SanPhamChiTiet> variants = sanPhamChiTietRepository.findBySanPhamId(p.getId());
         BigDecimal minPrice = variants.stream()
-                .map(SanPhamChiTiet::getGiaBan)
+                .map(this::getPromotionPriceForVariant)
                 .min(BigDecimal::compareTo)
-                .orElse(p.getGiaGoc());
+                .orElse(getPromotionPrice(p));
 
         return ProductResponse.builder()
                 .id(p.getId())
@@ -81,6 +135,7 @@ public class UserService {
                 .danhMuc(p.getDanhMuc())
                 .thuongHieu(p.getThuongHieu())
                 .giaGoc(p.getGiaGoc())
+                .giaSauGiam(getPromotionPrice(p))
                 .giaBanMin(minPrice)
                 .trangThai(p.getTrangThai())
                 .hinhAnhs(p.getHinhAnhs())
@@ -89,6 +144,38 @@ public class UserService {
 
     public List<SanPhamChiTiet> getProductVariants(Integer productId) {
         return sanPhamChiTietRepository.findBySanPhamId(productId);
+    }
+
+    public List<ProductResponse> getWishlist(Integer userId) {
+        return sanPhamYeuThichRepository.findByNguoiDungId(userId).stream()
+                .map(SanPhamYeuThich::getSanPham)
+                .map(this::convertToResponse)
+                .collect(Collectors.toList());
+    }
+
+    @Transactional
+    public boolean toggleWishlist(Integer userId, Integer productId) {
+        NguoiDung user = nguoiDungRepository.findById(userId)
+                .orElseThrow(() -> new RuntimeException("Người dùng không tồn tại"));
+        SanPham product = sanPhamRepository.findById(productId)
+                .orElseThrow(() -> new RuntimeException("Sản phẩm không tồn tại"));
+
+        Optional<SanPhamYeuThich> existing = sanPhamYeuThichRepository.findByNguoiDungIdAndSanPhamId(userId, productId);
+        if (existing.isPresent()) {
+            sanPhamYeuThichRepository.delete(existing.get());
+            return false;
+        }
+
+        SanPhamYeuThich wishlistItem = new SanPhamYeuThich();
+        wishlistItem.setNguoiDung(user);
+        wishlistItem.setSanPham(product);
+        sanPhamYeuThichRepository.save(wishlistItem);
+        return true;
+    }
+
+    @Transactional
+    public void removeFromWishlist(Integer userId, Integer productId) {
+        sanPhamYeuThichRepository.deleteByNguoiDungIdAndSanPhamId(userId, productId);
     }
 
     // --- Cart ---
@@ -116,9 +203,12 @@ public class UserService {
         SanPhamChiTiet spct = sanPhamChiTietRepository.findById(spctId)
                 .orElseThrow(() -> new RuntimeException("Sản phẩm không tồn tại"));
         
+        // Tính giá sau giảm nếu có khuyến mãi
+        BigDecimal donGia = getPromotionPriceForVariant(spct);
+        
         // Sử dụng native insert để kích hoạt trigger trg_cart_insert xử lý UPSERT
         String ma = "GHCT-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase();
-        gioHangChiTietRepository.nativeAddToCart(cart.getId(), spctId, quantity, spct.getGiaBan(), ma);
+        gioHangChiTietRepository.nativeAddToCart(cart.getId(), spctId, quantity, donGia, ma);
     }
 
     @Transactional
@@ -142,7 +232,23 @@ public class UserService {
         if (cart == null) {
             return new ArrayList<>();
         }
-        return gioHangChiTietRepository.findByGioHangId(cart.getId());
+        List<GioHangChiTiet> items = gioHangChiTietRepository.findByGioHangId(cart.getId());
+        
+        // Cập nhật giá khuyến mại cho từng item dựa trên SPCT
+        for (GioHangChiTiet item : items) {
+            if (item.getSanPhamChiTiet() != null) {
+                // Lấy giá khuyến mãi thực tế cho biến thể SPCT này
+                BigDecimal giaSauGiam = getPromotionPriceForVariant(item.getSanPhamChiTiet());
+                item.setDonGia(giaSauGiam);
+                
+                // Đồng bộ cả giaSauGiam trong đối tượng SanPham để FE dễ dùng
+                if (item.getSanPhamChiTiet().getSanPham() != null) {
+                    item.getSanPhamChiTiet().getSanPham().setGiaSauGiam(getPromotionPrice(item.getSanPhamChiTiet().getSanPham()));
+                }
+            }
+        }
+        
+        return items;
     }
 
     // --- Checkout & Order ---
@@ -171,7 +277,8 @@ public class UserService {
             GioHangChiTiet ghct = gioHangChiTietRepository.findById(ghctId)
                     .orElseThrow(() -> new RuntimeException("Sản phẩm trong giỏ không tồn tại: ID=" + ghctId));
             SanPhamChiTiet spct = ghct.getSanPhamChiTiet();
-            BigDecimal donGia = ghct.getDonGia() != null ? ghct.getDonGia() : spct.getGiaBan();
+            // Lấy giá bán sau khi áp dụng khuyến mãi
+            BigDecimal donGia = getPromotionPriceForVariant(spct);
             BigDecimal thanhTien = donGia.multiply(BigDecimal.valueOf(ghct.getSoLuong()));
             
             items.add(CheckoutResponse.CartItemInfo.builder()
@@ -273,8 +380,8 @@ public class UserService {
                     .orElseThrow(() -> new RuntimeException("Sản phẩm trong giỏ không tồn tại: ID=" + ghctId));
             SanPhamChiTiet spct = ghct.getSanPhamChiTiet();
             
-            // Lấy giá bán từ sản phẩm chi tiết
-            BigDecimal donGia = spct.getGiaBan();
+            // Lấy giá bán sau khi áp dụng khuyến mãi
+            BigDecimal donGia = getPromotionPriceForVariant(spct);
             
             HoaDonChiTiet detail = new HoaDonChiTiet();
             detail.setMaHoaDonChiTiet("HDCT-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase());
@@ -358,6 +465,63 @@ public class UserService {
         return maGiamGiaRepository.findByTrangThaiTrue();
     }
 
+    public List<AddressResponse> getUserAddresses(Integer userId) {
+        return diaChiVanChuyenRepository.findByNguoiDungIdAndTrangThaiTrueOrderByLaMacDinhDescIdDesc(userId)
+                .stream()
+                .map(this::toAddressResponse)
+                .collect(Collectors.toList());
+    }
+
+    @Transactional
+    public AddressResponse saveAddress(Integer userId, AddressRequest request) {
+        NguoiDung user = nguoiDungRepository.findById(userId)
+                .orElseThrow(() -> new RuntimeException("Người dùng không tồn tại"));
+
+        DiaChiVanChuyen address = request.getId() != null
+                ? diaChiVanChuyenRepository.findByIdAndNguoiDungId(request.getId(), userId)
+                    .orElseThrow(() -> new RuntimeException("Địa chỉ không tồn tại"))
+                : new DiaChiVanChuyen();
+
+        address.setNguoiDung(user);
+        address.setTenNguoiNhan(request.getTenNguoiNhan());
+        address.setSoDienThoai(request.getSoDienThoai());
+        address.setDiaChiChiTiet(request.getDiaChiChiTiet());
+        address.setLoaiDiaChi(request.getLoaiDiaChi());
+        address.setTrangThai(true);
+        address.setLaMacDinh(Boolean.TRUE.equals(request.getLaMacDinh()));
+        if (request.getXaId() != null) {
+            address.setXa(xaRepository.findById(request.getXaId()).orElse(null));
+        } else {
+            address.setXa(null);
+        }
+
+        if (Boolean.TRUE.equals(request.getLaMacDinh())) {
+            clearDefaultAddress(userId);
+        }
+
+        DiaChiVanChuyen saved = diaChiVanChuyenRepository.save(address);
+        return toAddressResponse(saved);
+    }
+
+    @Transactional
+    public void deleteAddress(Integer userId, Integer addressId) {
+        DiaChiVanChuyen address = diaChiVanChuyenRepository.findByIdAndNguoiDungId(addressId, userId)
+                .orElseThrow(() -> new RuntimeException("Địa chỉ không tồn tại"));
+        address.setTrangThai(false);
+        address.setLaMacDinh(false);
+        diaChiVanChuyenRepository.save(address);
+    }
+
+    @Transactional
+    public void setDefaultAddress(Integer userId, Integer addressId) {
+        DiaChiVanChuyen address = diaChiVanChuyenRepository.findByIdAndNguoiDungId(addressId, userId)
+                .orElseThrow(() -> new RuntimeException("Địa chỉ không tồn tại"));
+        clearDefaultAddress(userId);
+        address.setLaMacDinh(true);
+        address.setTrangThai(true);
+        diaChiVanChuyenRepository.save(address);
+    }
+
     @Transactional
     public NguoiDung updateProfile(Integer userId, NguoiDung updatedUser) {
         NguoiDung user = nguoiDungRepository.findById(userId)
@@ -381,5 +545,48 @@ public class UserService {
         
         user.setMatKhau(newPassword);
         nguoiDungRepository.save(user);
+    }
+
+    public List<Tinh> getAllTinh() {
+        return tinhRepository.findByTrangThaiTrueOrderByTenTinhAsc();
+    }
+
+    public List<Huyen> getHuyenByTinh(Integer tinhId) {
+        return huyenRepository.findByTinhIdAndTrangThaiTrueOrderByTenHuyenAsc(tinhId);
+    }
+
+    public List<Xa> getXaByHuyen(Integer huyenId) {
+        return xaRepository.findByHuyenIdAndTrangThaiTrueOrderByTenXaAsc(huyenId);
+    }
+
+    private void clearDefaultAddress(Integer userId) {
+        List<DiaChiVanChuyen> addresses = diaChiVanChuyenRepository.findByNguoiDungId(userId);
+        for (DiaChiVanChuyen item : addresses) {
+            if (Boolean.TRUE.equals(item.getLaMacDinh())) {
+                item.setLaMacDinh(false);
+            }
+        }
+        diaChiVanChuyenRepository.saveAll(addresses);
+    }
+
+    private AddressResponse toAddressResponse(DiaChiVanChuyen address) {
+        Xa xa = address.getXa();
+        Huyen huyen = xa != null ? xa.getHuyen() : null;
+        Tinh tinh = huyen != null ? huyen.getTinh() : null;
+        return AddressResponse.builder()
+                .id(address.getId())
+                .tenNguoiNhan(address.getTenNguoiNhan())
+                .soDienThoai(address.getSoDienThoai())
+                .diaChiChiTiet(address.getDiaChiChiTiet())
+                .loaiDiaChi(address.getLoaiDiaChi())
+                .laMacDinh(address.getLaMacDinh())
+                .trangThai(address.getTrangThai())
+                .xaId(xa != null ? xa.getId() : null)
+                .huyenId(huyen != null ? huyen.getId() : null)
+                .tinhId(tinh != null ? tinh.getId() : null)
+                .xa(xa != null ? xa.getTenXa() : null)
+                .huyen(huyen != null ? huyen.getTenHuyen() : null)
+                .tinh(tinh != null ? tinh.getTenTinh() : null)
+                .build();
     }
 }
