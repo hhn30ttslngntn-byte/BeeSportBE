@@ -96,7 +96,7 @@ public class AdminController {
 
     // --- Bill ---
     @GetMapping("/bills")
-    public ResponseEntity<List<HoaDon>> getAllBills() {
+    public ResponseEntity<Object> getAllBills() {
         return ResponseEntity.ok(adminService.getAllBills());
     }
 
@@ -108,6 +108,11 @@ public class AdminController {
     @GetMapping("/bills/{id}")
     public ResponseEntity<Object> getBillDetail(@PathVariable Integer id) {
         return ResponseEntity.ok(adminService.getBillDetail(id));
+    }
+
+    @GetMapping("/revenue")
+    public ResponseEntity<Object> getRevenueSummary() {
+        return ResponseEntity.ok(adminService.getRevenueSummary());
     }
 
     // --- Voucher ---
@@ -216,8 +221,8 @@ public class AdminController {
     }
 
     @PostMapping("/pos/invoices/{id}/checkout")
-    public ResponseEntity<Void> checkoutPOS(@PathVariable Integer id, @RequestParam Integer paymentMethodId, @RequestBody(required = false) String note, @RequestParam(required = false) Integer customerId) {
-        adminService.checkoutPOS(id, paymentMethodId, note, customerId);
+    public ResponseEntity<Void> checkoutPOS(@PathVariable Integer id, @RequestParam Integer paymentMethodId, @RequestBody(required = false) String note, @RequestParam(required = false) Integer customerId, @RequestParam(required = false) String voucherCode) {
+        adminService.checkoutPOS(id, paymentMethodId, note, customerId, voucherCode);
         return ResponseEntity.ok().build();
     }
 

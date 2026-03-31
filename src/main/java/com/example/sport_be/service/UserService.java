@@ -11,12 +11,14 @@ import com.example.sport_be.repository.*;
 import jakarta.persistence.EntityManager;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -24,6 +26,12 @@ import java.util.stream.Collectors;
 @Service
 @RequiredArgsConstructor
 public class UserService {
+    @Value("${app.backend-public-url:http://localhost:8080}")
+    private String backendPublicUrl;
+
+    @Value("${app.frontend-url:http://localhost:5174}")
+    private String frontendUrl;
+
     private final SanPhamRepository sanPhamRepository;
     private final SanPhamChiTietRepository sanPhamChiTietRepository;
     private final GioHangRepository gioHangRepository;
@@ -40,6 +48,7 @@ public class UserService {
     private final XaRepository xaRepository;
     private final PtThanhToanRepository ptThanhToanRepository;
     private final LichSuHoaDonRepository lichSuHoaDonRepository;
+    private final LichSuThanhToanRepository lichSuThanhToanRepository;
     private final DotGiamGiaRepository dotGiamGiaRepository;
     private final GiamGiaSanPhamRepository giamGiaSanPhamRepository;
     private final SanPhamYeuThichRepository sanPhamYeuThichRepository;
@@ -368,11 +377,15 @@ public class UserService {
         hoaDon.setTongThanhToan(BigDecimal.ZERO);
         
         HoaDon savedOrder = hoaDonRepository.saveAndFlush(hoaDon);
+        syncShippingAddressToAddressBook(user, request);
         
         // Lưu lịch sử hóa đơn
         LichSuHoaDon history = new LichSuHoaDon();
         history.setHoaDon(savedOrder);
         history.setTrangThai("DA_DAT");
+        history.setGhiChu("VNPAY".equals(ptThanhToan.getMaPtThanhToan())
+                ? "Don hang da tao, dang cho thanh toan VNPay"
+                : "Don hang da duoc tao");
         lichSuHoaDonRepository.save(history);
         
         for (Integer ghctId : request.getCartItemIds()) {
@@ -410,17 +423,93 @@ public class UserService {
         
         String paymentUrl = null;
         if ("VNPAY".equals(ptThanhToan.getMaPtThanhToan())) {
-            BigDecimal totalToPay = savedOrder.getTongThanhToan() != null ? savedOrder.getTongThanhToan() : BigDecimal.ZERO;
-            paymentUrl = vnpayService.createPaymentUrl(httpRequest, 
-                totalToPay.longValue(), 
-                "Thanh toan don hang " + savedOrder.getMaHoaDon(), 
-                "http://localhost:8080/api/user/vnpay-callback");
+            BigDecimal totalToPay = calc.getTongThanhToan() != null
+                    ? calc.getTongThanhToan()
+                    : savedOrder.getTongThanhToan();
+
+            LichSuThanhToan pendingPayment = new LichSuThanhToan();
+            pendingPayment.setHoaDon(savedOrder);
+            pendingPayment.setPtThanhToan(ptThanhToan);
+            pendingPayment.setSoTien(totalToPay);
+            pendingPayment.setTrangThaiThanhToan("CHO_THANH_TOAN");
+            lichSuThanhToanRepository.save(pendingPayment);
+
+            paymentUrl = vnpayService.createPaymentUrl(
+                    httpRequest,
+                    totalToPay,
+                    "Thanh toan don hang " + savedOrder.getMaHoaDon(),
+                    backendPublicUrl + "/api/user/vnpay-callback",
+                    savedOrder.getId().toString()
+            );
         }
         
         return OrderResponse.builder()
                 .hoaDon(savedOrder)
                 .paymentUrl(paymentUrl)
                 .build();
+    }
+
+    @Transactional
+    public String handleVNPayCallback(Map<String, String> params) {
+        String frontendRedirectBase = frontendUrl + "/order-history";
+
+        if (!vnpayService.verifyCallback(params)) {
+            return frontendRedirectBase + "?payment=invalid";
+        }
+
+        String txnRef = params.get("vnp_TxnRef");
+        if (txnRef == null || txnRef.isBlank()) {
+            return frontendRedirectBase + "?payment=invalid";
+        }
+
+        Integer orderId;
+        try {
+            orderId = Integer.valueOf(txnRef);
+        } catch (NumberFormatException ex) {
+            return frontendRedirectBase + "?payment=invalid";
+        }
+
+        HoaDon hoaDon = hoaDonRepository.findById(orderId)
+                .orElseThrow(() -> new RuntimeException("Khong tim thay don hang cho giao dich VNPAY"));
+
+        PtThanhToan ptThanhToan = hoaDon.getPtThanhToan();
+        boolean success = "00".equals(params.get("vnp_ResponseCode"));
+
+        LichSuThanhToan paymentHistory = lichSuThanhToanRepository
+                .findTopByHoaDonIdOrderByNgayThanhToanDesc(orderId)
+                .orElseGet(LichSuThanhToan::new);
+        paymentHistory.setHoaDon(hoaDon);
+        paymentHistory.setPtThanhToan(ptThanhToan);
+        paymentHistory.setSoTien(hoaDon.getTongThanhToan());
+        paymentHistory.setTrangThaiThanhToan(success ? "DA_THANH_TOAN" : "THAT_BAI");
+        lichSuThanhToanRepository.save(paymentHistory);
+
+        if (success) {
+            if (!"CHO_XAC_NHAN".equals(hoaDon.getTrangThaiDon())) {
+                hoaDon.setTrangThaiDon("CHO_XAC_NHAN");
+                hoaDonRepository.save(hoaDon);
+
+                LichSuHoaDon history = new LichSuHoaDon();
+                history.setHoaDon(hoaDon);
+                history.setTrangThai("DA_DAT");
+                history.setGhiChu("Thanh toan VNPAY thanh cong");
+                lichSuHoaDonRepository.save(history);
+            }
+            return frontendRedirectBase + "?payment=success&orderId=" + hoaDon.getId();
+        }
+
+        if (!"DA_HUY".equals(hoaDon.getTrangThaiDon())) {
+            hoaDon.setTrangThaiDon("DA_HUY");
+            hoaDonRepository.save(hoaDon);
+
+            LichSuHoaDon history = new LichSuHoaDon();
+            history.setHoaDon(hoaDon);
+            history.setTrangThai("DA_HUY");
+            history.setGhiChu("Thanh toan VNPAY that bai hoac bi huy");
+            lichSuHoaDonRepository.save(history);
+        }
+
+        return frontendRedirectBase + "?payment=failed&orderId=" + hoaDon.getId();
     }
 
     public List<HoaDon> getUserOrders(Integer userId) {
@@ -567,6 +656,69 @@ public class UserService {
             }
         }
         diaChiVanChuyenRepository.saveAll(addresses);
+    }
+
+    private void syncShippingAddressToAddressBook(NguoiDung user, OrderRequest request) {
+        if (request.getDiaChiChiTiet() == null || request.getDiaChiChiTiet().isBlank()) {
+            return;
+        }
+
+        List<DiaChiVanChuyen> addresses = diaChiVanChuyenRepository.findByNguoiDungId(user.getId());
+        DiaChiVanChuyen matchedAddress = addresses.stream()
+                .filter(item -> sameText(item.getTenNguoiNhan(), request.getTenNguoiNhan()))
+                .filter(item -> sameText(item.getSoDienThoai(), request.getSoDienThoai()))
+                .filter(item -> sameText(item.getDiaChiChiTiet(), request.getDiaChiChiTiet()))
+                .filter(item -> {
+                    Xa xa = item.getXa();
+                    return xa != null && sameText(xa.getTenXa(), request.getXa());
+                })
+                .findFirst()
+                .orElse(null);
+
+        DiaChiVanChuyen address = matchedAddress != null ? matchedAddress : new DiaChiVanChuyen();
+        address.setNguoiDung(user);
+        address.setTenNguoiNhan(request.getTenNguoiNhan());
+        address.setSoDienThoai(request.getSoDienThoai());
+        address.setDiaChiChiTiet(request.getDiaChiChiTiet());
+        address.setLoaiDiaChi(address.getLoaiDiaChi() != null ? address.getLoaiDiaChi() : "Nhà riêng");
+        address.setTrangThai(true);
+        address.setXa(resolveXaByOrderRequest(request));
+
+        boolean hasActiveAddress = addresses.stream().anyMatch(item -> Boolean.TRUE.equals(item.getTrangThai()));
+        if (matchedAddress == null) {
+            address.setLaMacDinh(!hasActiveAddress);
+        } else if (address.getLaMacDinh() == null) {
+            address.setLaMacDinh(false);
+        }
+
+        diaChiVanChuyenRepository.save(address);
+    }
+
+    private Xa resolveXaByOrderRequest(OrderRequest request) {
+        Tinh tinh = tinhRepository.findByTrangThaiTrueOrderByTenTinhAsc().stream()
+                .filter(item -> sameText(item.getTenTinh(), request.getTinh()))
+                .findFirst()
+                .orElse(null);
+        if (tinh == null) return null;
+
+        Huyen huyen = huyenRepository.findByTinhIdAndTrangThaiTrueOrderByTenHuyenAsc(tinh.getId()).stream()
+                .filter(item -> sameText(item.getTenHuyen(), request.getHuyen()))
+                .findFirst()
+                .orElse(null);
+        if (huyen == null) return null;
+
+        return xaRepository.findByHuyenIdAndTrangThaiTrueOrderByTenXaAsc(huyen.getId()).stream()
+                .filter(item -> sameText(item.getTenXa(), request.getXa()))
+                .findFirst()
+                .orElse(null);
+    }
+
+    private boolean sameText(String left, String right) {
+        return normalizeText(left).equals(normalizeText(right));
+    }
+
+    private String normalizeText(String value) {
+        return value == null ? "" : value.trim().toLowerCase();
     }
 
     private AddressResponse toAddressResponse(DiaChiVanChuyen address) {

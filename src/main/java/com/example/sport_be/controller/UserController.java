@@ -1,8 +1,8 @@
 package com.example.sport_be.controller;
 
-import com.example.sport_be.dto.CheckoutResponse;
 import com.example.sport_be.dto.AddressRequest;
 import com.example.sport_be.dto.AddressResponse;
+import com.example.sport_be.dto.CheckoutResponse;
 import com.example.sport_be.dto.OrderRequest;
 import com.example.sport_be.dto.OrderResponse;
 import com.example.sport_be.dto.ProductResponse;
@@ -20,12 +20,11 @@ import java.util.Map;
 @RestController
 @RequestMapping("/api/user")
 @RequiredArgsConstructor
-@CrossOrigin(origins = "*") // Update with frontend URL for production
+@CrossOrigin(origins = "*")
 public class UserController {
     private final UserService userService;
     private final HttpServletRequest httpServletRequest;
 
-    // --- Category ---
     @GetMapping("/categories")
     public ResponseEntity<List<DanhMuc>> getAllCategories() {
         return ResponseEntity.ok(userService.getAllCategories());
@@ -36,13 +35,11 @@ public class UserController {
         return ResponseEntity.ok(userService.getAllBrands());
     }
 
-    // --- Payment Method ---
     @GetMapping("/payment-methods")
     public ResponseEntity<List<PtThanhToan>> getAllPaymentMethods() {
         return ResponseEntity.ok(userService.getAllPaymentMethods());
     }
 
-    // --- Product ---
     @GetMapping("/products")
     public ResponseEntity<List<ProductResponse>> getAllProducts() {
         return ResponseEntity.ok(userService.getAllProducts());
@@ -74,14 +71,17 @@ public class UserController {
         return ResponseEntity.ok().build();
     }
 
-    // --- Cart (Mocked User for now) ---
     @GetMapping("/cart/{userId}")
     public ResponseEntity<List<GioHangChiTiet>> getCartItems(@PathVariable Integer userId) {
         return ResponseEntity.ok(userService.getCartItems(userId));
     }
 
     @PostMapping("/cart/{userId}/add")
-    public ResponseEntity<String> addToCart(@PathVariable Integer userId, @RequestParam Integer spctId, @RequestParam Integer quantity) {
+    public ResponseEntity<String> addToCart(
+            @PathVariable Integer userId,
+            @RequestParam Integer spctId,
+            @RequestParam Integer quantity
+    ) {
         userService.addToCart(userId, spctId, quantity);
         return ResponseEntity.ok("Added to cart");
     }
@@ -92,7 +92,6 @@ public class UserController {
         return ResponseEntity.ok("Removed from cart");
     }
 
-    // --- Order ---
     @PostMapping("/order/checkout")
     public ResponseEntity<CheckoutResponse> checkout(@RequestBody OrderRequest request) {
         return ResponseEntity.ok(userService.getCheckoutInfo(request));
@@ -104,14 +103,12 @@ public class UserController {
     }
 
     @GetMapping("/vnpay-callback")
-    public void vnpayCallback(@RequestParam Map<String, String> params, jakarta.servlet.http.HttpServletResponse response) throws IOException {
-        String vnp_ResponseCode = params.get("vnp_ResponseCode");
-        if ("00".equals(vnp_ResponseCode)) {
-            // Thanh toán thành công, có thể cập nhật trạng thái đơn hàng ở đây
-            response.sendRedirect("http://localhost:5173/order-history?payment=success");
-        } else {
-            response.sendRedirect("http://localhost:5173/order-history?payment=failed");
-        }
+    public void vnpayCallback(
+            @RequestParam Map<String, String> params,
+            jakarta.servlet.http.HttpServletResponse response
+    ) throws IOException {
+        response.setHeader("ngrok-skip-browser-warning", "true");
+        response.sendRedirect(userService.handleVNPayCallback(params));
     }
 
     @GetMapping("/orders/{userId}")
@@ -128,13 +125,12 @@ public class UserController {
     public ResponseEntity<String> cancelOrder(@PathVariable Integer orderId) {
         try {
             userService.cancelOrder(orderId);
-            return ResponseEntity.ok("Đã hủy đơn hàng thành công");
+            return ResponseEntity.ok("Da huy don hang thanh cong");
         } catch (Exception e) {
             return ResponseEntity.badRequest().body(e.getMessage());
         }
     }
 
-    // --- Voucher ---
     @GetMapping("/vouchers")
     public ResponseEntity<List<MaGiamGia>> getAllVouchers() {
         return ResponseEntity.ok(userService.getAllVouchers());
@@ -190,7 +186,7 @@ public class UserController {
     public ResponseEntity<?> changePassword(@PathVariable Integer userId, @RequestBody Map<String, String> passwords) {
         try {
             userService.changePassword(userId, passwords.get("oldPassword"), passwords.get("newPassword"));
-            return ResponseEntity.ok("Đổi mật khẩu thành công");
+            return ResponseEntity.ok("Doi mat khau thanh cong");
         } catch (Exception e) {
             return ResponseEntity.badRequest().body(e.getMessage());
         }

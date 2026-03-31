@@ -12,10 +12,14 @@ import java.math.BigDecimal;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
-import java.util.List;
 import java.text.Normalizer;
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 @Service
@@ -40,6 +44,7 @@ public class AdminService {
     private final GioHangRepository gioHangRepository;
     private final GioHangChiTietRepository gioHangChiTietRepository;
     private final HinhAnhSanPhamRepository hinhAnhSanPhamRepository;
+    private final DiaChiVanChuyenRepository diaChiVanChuyenRepository;
 
     // --- Product ---
     public List<SanPham> getAllProducts() {
@@ -281,8 +286,87 @@ public class AdminService {
     }
 
     // --- Bill ---
-    public List<HoaDon> getAllBills() {
-        return hoaDonRepository.findAll();
+    public List<Map<String, Object>> getAllBills() {
+        return hoaDonRepository.findAll().stream()
+                .sorted((left, right) -> {
+                    LocalDateTime leftTime = left.getNgayTao();
+                    LocalDateTime rightTime = right.getNgayTao();
+                    if (leftTime == null && rightTime == null) return 0;
+                    if (leftTime == null) return 1;
+                    if (rightTime == null) return -1;
+                    return rightTime.compareTo(leftTime);
+                })
+                .map(this::toBillSummaryMap)
+                .toList();
+    }
+
+    public Map<String, Object> getRevenueSummary() {
+        List<HoaDon> deliveredBills = hoaDonRepository.findAll().stream()
+                .filter(bill -> "DA_GIAO".equals(bill.getTrangThaiDon()))
+                .toList();
+
+        LocalDate today = LocalDate.now();
+        List<HoaDon> todayBills = deliveredBills.stream()
+                .filter(bill -> bill.getNgayTao() != null && today.equals(bill.getNgayTao().toLocalDate()))
+                .toList();
+
+        BigDecimal todayRevenue = todayBills.stream()
+                .map(HoaDon::getTongThanhToan)
+                .filter(java.util.Objects::nonNull)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+        int todayOrders = todayBills.size();
+        int todayProductsSold = todayBills.stream()
+                .map(HoaDon::getId)
+                .filter(java.util.Objects::nonNull)
+                .mapToInt(id -> hoaDonChiTietRepository.findByHoaDonId(id).stream()
+                        .map(HoaDonChiTiet::getSoLuong)
+                        .filter(java.util.Objects::nonNull)
+                        .mapToInt(Integer::intValue)
+                        .sum())
+                .sum();
+
+        Map<LocalDate, List<HoaDon>> groupedByDate = new java.util.TreeMap<>(java.util.Comparator.reverseOrder());
+        for (HoaDon bill : deliveredBills) {
+            if (bill.getNgayTao() == null) continue;
+            groupedByDate.computeIfAbsent(bill.getNgayTao().toLocalDate(), key -> new ArrayList<>()).add(bill);
+        }
+
+        List<Map<String, Object>> dailyRevenue = groupedByDate.entrySet().stream()
+                .map(entry -> {
+                    BigDecimal revenue = entry.getValue().stream()
+                            .map(HoaDon::getTongThanhToan)
+                            .filter(java.util.Objects::nonNull)
+                            .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+                    int productsSold = entry.getValue().stream()
+                            .map(HoaDon::getId)
+                            .filter(java.util.Objects::nonNull)
+                            .mapToInt(id -> hoaDonChiTietRepository.findByHoaDonId(id).stream()
+                                    .map(HoaDonChiTiet::getSoLuong)
+                                    .filter(java.util.Objects::nonNull)
+                                    .mapToInt(Integer::intValue)
+                                    .sum())
+                            .sum();
+
+                    Map<String, Object> item = new LinkedHashMap<>();
+                    item.put("date", entry.getKey());
+                    item.put("orders", entry.getValue().size());
+                    item.put("productsSold", productsSold);
+                    item.put("revenue", revenue);
+                    return item;
+                })
+                .toList();
+
+        Map<String, Object> stats = new LinkedHashMap<>();
+        stats.put("todayRevenue", todayRevenue);
+        stats.put("todayOrders", todayOrders);
+        stats.put("todayProductsSold", todayProductsSold);
+
+        Map<String, Object> response = new LinkedHashMap<>();
+        response.put("stats", stats);
+        response.put("dailyRevenue", dailyRevenue);
+        return response;
     }
 
     public HoaDon updateBillStatus(Integer id, String status) {
@@ -306,11 +390,143 @@ public class AdminService {
         List<HoaDonChiTiet> items = hoaDonChiTietRepository.findByHoaDonId(id);
         List<LichSuHoaDon> history = lichSuHoaDonRepository.findByHoaDonIdOrderByNgayCapNhatDesc(id);
 
-        return new Object() {
-            public HoaDon getBill() { return hoaDon; }
-            public List<HoaDonChiTiet> getItems() { return items; }
-            public List<LichSuHoaDon> getHistory() { return history; }
-        };
+        Map<String, Object> response = new HashMap<>();
+        response.put("bill", toBillDetailMap(hoaDon));
+        response.put("items", items.stream().map(this::toBillItemMap).toList());
+        response.put("history", history);
+        return response;
+    }
+
+    private Map<String, Object> toBillSummaryMap(HoaDon hoaDon) {
+        Map<String, Object> bill = new LinkedHashMap<>();
+        bill.put("id", hoaDon.getId());
+        bill.put("maHoaDon", hoaDon.getMaHoaDon());
+        bill.put("tenNguoiNhan", sanitizeDisplayText(hoaDon.getTenNguoiNhan()));
+        bill.put("tenKhachHang", sanitizeDisplayText(
+                hoaDon.getNguoiDung() != null ? hoaDon.getNguoiDung().getHoTen() : hoaDon.getTenNguoiNhan()
+        ));
+        bill.put("soDienThoai", sanitizeDisplayText(hoaDon.getSoDienThoai()));
+        bill.put("tongTienHang", hoaDon.getTongTienHang());
+        bill.put("tienGiam", hoaDon.getTienGiam());
+        bill.put("phiVanChuyen", hoaDon.getPhiVanChuyen());
+        bill.put("tongThanhToan", hoaDon.getTongThanhToan());
+        bill.put("trangThaiDon", hoaDon.getTrangThaiDon());
+        bill.put("loaiDonHang", hoaDon.getLoaiDonHang());
+        bill.put("ngayTao", hoaDon.getNgayTao());
+        return bill;
+    }
+
+    private Map<String, Object> toBillDetailMap(HoaDon hoaDon) {
+        DiaChiVanChuyen matchedAddress = findMatchingShippingAddress(hoaDon);
+        Xa matchedXa = matchedAddress != null ? matchedAddress.getXa() : null;
+        Huyen matchedHuyen = matchedXa != null ? matchedXa.getHuyen() : null;
+        Tinh matchedTinh = matchedHuyen != null ? matchedHuyen.getTinh() : null;
+
+        String xa = sanitizeRegionText(hoaDon.getXa());
+        String huyen = sanitizeRegionText(hoaDon.getHuyen());
+        String tinh = sanitizeRegionText(hoaDon.getTinh());
+
+        if (xa == null && matchedXa != null) xa = matchedXa.getTenXa();
+        if (huyen == null && matchedHuyen != null) huyen = matchedHuyen.getTenHuyen();
+        if (tinh == null && matchedTinh != null) tinh = matchedTinh.getTenTinh();
+
+        Map<String, Object> bill = new LinkedHashMap<>();
+        bill.put("id", hoaDon.getId());
+        bill.put("maHoaDon", hoaDon.getMaHoaDon());
+        bill.put("tenNguoiNhan", sanitizeDisplayText(hoaDon.getTenNguoiNhan()));
+        bill.put("soDienThoai", sanitizeDisplayText(hoaDon.getSoDienThoai()));
+        bill.put("ghiChu", sanitizeDisplayText(hoaDon.getGhiChu()));
+        bill.put("diaChiChiTiet", sanitizeDisplayText(hoaDon.getDiaChiChiTiet()));
+        bill.put("xa", xa);
+        bill.put("huyen", huyen);
+        bill.put("tinh", tinh);
+        bill.put("diaChiLoiMaHoa",
+                isBrokenVietnamese(hoaDon.getXa())
+                        || isBrokenVietnamese(hoaDon.getHuyen())
+                        || isBrokenVietnamese(hoaDon.getTinh()));
+        bill.put("tongTienHang", hoaDon.getTongTienHang());
+        bill.put("tienGiam", hoaDon.getTienGiam());
+        bill.put("phiVanChuyen", hoaDon.getPhiVanChuyen());
+        bill.put("tongThanhToan", hoaDon.getTongThanhToan());
+        bill.put("trangThaiDon", hoaDon.getTrangThaiDon());
+        bill.put("loaiDonHang", hoaDon.getLoaiDonHang());
+        bill.put("ngayTao", hoaDon.getNgayTao());
+        return bill;
+    }
+
+    private DiaChiVanChuyen findMatchingShippingAddress(HoaDon hoaDon) {
+        if (hoaDon.getNguoiDung() == null || hoaDon.getNguoiDung().getId() == null) {
+            return null;
+        }
+
+        List<DiaChiVanChuyen> addresses = diaChiVanChuyenRepository
+                .findByNguoiDungIdAndTrangThaiTrueOrderByLaMacDinhDescIdDesc(hoaDon.getNguoiDung().getId());
+
+        return addresses.stream()
+                .filter(item -> sameText(item.getTenNguoiNhan(), hoaDon.getTenNguoiNhan()))
+                .filter(item -> sameText(item.getSoDienThoai(), hoaDon.getSoDienThoai()))
+                .filter(item -> sameText(item.getDiaChiChiTiet(), hoaDon.getDiaChiChiTiet()))
+                .findFirst()
+                .orElseGet(() -> addresses.stream()
+                        .filter(item -> sameText(item.getDiaChiChiTiet(), hoaDon.getDiaChiChiTiet()))
+                        .findFirst()
+                        .orElse(null));
+    }
+
+    private Map<String, Object> toBillItemMap(HoaDonChiTiet item) {
+        SanPhamChiTiet spct = item.getSanPhamChiTiet();
+        SanPham sanPham = spct != null ? spct.getSanPham() : null;
+
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("id", item.getId());
+        result.put("tenSanPham", preferCurrentValue(item.getTenSanPham(), sanPham != null ? sanPham.getTenSanPham() : null));
+        result.put("mauSac", preferCurrentValue(item.getMauSac(), spct != null && spct.getMauSac() != null ? spct.getMauSac().getTen() : null));
+        result.put("kichThuoc", preferCurrentValue(item.getKichThuoc(), spct != null && spct.getKichThuoc() != null ? spct.getKichThuoc().getTen() : null));
+        result.put("chatLieu", preferCurrentValue(item.getChatLieu(), spct != null && spct.getChatLieu() != null ? spct.getChatLieu().getTen() : null));
+        result.put("donGia", item.getDonGia());
+        result.put("soLuong", item.getSoLuong());
+        result.put("thanhTien", item.getThanhTien());
+        return result;
+    }
+
+    private String preferCurrentValue(String snapshotValue, String currentValue) {
+        if (isBrokenVietnamese(snapshotValue) && currentValue != null && !currentValue.isBlank()) {
+            return currentValue;
+        }
+        return sanitizeDisplayText(snapshotValue);
+    }
+
+    private String sanitizeRegionText(String value) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        return isBrokenVietnamese(value) ? null : value;
+    }
+
+    private String sanitizeDisplayText(String value) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        return isBrokenVietnamese(value) ? "Dữ liệu cũ bị lỗi mã hóa" : value;
+    }
+
+    private boolean isBrokenVietnamese(String value) {
+        if (value == null || value.isBlank()) {
+            return false;
+        }
+        return value.contains("?")
+                || value.contains("Ã")
+                || value.contains("Æ")
+                || value.contains("Ð")
+                || value.contains("�");
+    }
+
+    private boolean sameText(String left, String right) {
+        return normalizeText(left).equals(normalizeText(right));
+    }
+
+    private String normalizeText(String value) {
+        return value == null ? "" : value.trim().toLowerCase();
     }
 
     // --- Voucher ---
@@ -468,13 +684,9 @@ public class AdminService {
                 .orElseThrow(() -> new RuntimeException("Không tìm thấy hóa đơn"));
 
         List<GioHangChiTiet> items = gioHangChiTietRepository.findByGioHangId(invoiceId);
-        java.math.BigDecimal promoTotal = items.stream()
-                .filter(item -> item.getSanPhamChiTiet() != null && item.getDonGia() != null && item.getSanPhamChiTiet().getGiaBan() != null)
-                .filter(item -> item.getDonGia().compareTo(item.getSanPhamChiTiet().getGiaBan()) < 0)
-                .map(item -> item.getDonGia().multiply(java.math.BigDecimal.valueOf(item.getSoLuong())))
-                .reduce(java.math.BigDecimal.ZERO, java.math.BigDecimal::add);
+        BigDecimal subTotal = calculateInvoiceSubtotal(items);
 
-        if (promoTotal.compareTo(java.math.BigDecimal.ZERO) <= 0) {
+        if (subTotal.compareTo(BigDecimal.ZERO) <= 0) {
             return java.util.Collections.emptyList();
         }
 
@@ -483,7 +695,7 @@ public class AdminService {
         return maGiamGiaRepository.findByTrangThaiTrue().stream()
                 .filter(v -> v.getNgayBatDau() != null && v.getNgayKetHuc() != null && !now.isBefore(v.getNgayBatDau()) && !now.isAfter(v.getNgayKetHuc()))
                 .filter(v -> v.getSoLuong() == null || v.getSoLuongDaDung() == null || v.getSoLuong() > v.getSoLuongDaDung())
-                .filter(v -> v.getGiaTriToiThieu() == null || promoTotal.compareTo(v.getGiaTriToiThieu()) >= 0)
+                .filter(v -> v.getGiaTriToiThieu() == null || subTotal.compareTo(v.getGiaTriToiThieu()) >= 0)
                 .collect(java.util.stream.Collectors.toList());
     }
 
@@ -504,17 +716,13 @@ public class AdminService {
         }
 
         List<GioHangChiTiet> items = gioHangChiTietRepository.findByGioHangId(id);
-        java.math.BigDecimal promoTotal = items.stream()
-                .filter(item -> item.getSanPhamChiTiet() != null && item.getDonGia() != null && item.getSanPhamChiTiet().getGiaBan() != null)
-                .filter(item -> item.getDonGia().compareTo(item.getSanPhamChiTiet().getGiaBan()) < 0)
-                .map(item -> item.getDonGia().multiply(java.math.BigDecimal.valueOf(item.getSoLuong())))
-                .reduce(java.math.BigDecimal.ZERO, java.math.BigDecimal::add);
+        BigDecimal subTotal = calculateInvoiceSubtotal(items);
 
-        if (promoTotal.compareTo(java.math.BigDecimal.ZERO) <= 0) {
+        if (subTotal.compareTo(BigDecimal.ZERO) <= 0) {
             throw new RuntimeException("Voucher chỉ áp dụng cho sản phẩm đang trong đợt giảm giá");
         }
 
-        if (voucher.getGiaTriToiThieu() != null && promoTotal.compareTo(voucher.getGiaTriToiThieu()) < 0) {
+        if (voucher.getGiaTriToiThieu() != null && subTotal.compareTo(voucher.getGiaTriToiThieu()) < 0) {
             throw new RuntimeException("Tổng giá trị hàng giảm giá chưa đạt điều kiện tối thiểu của voucher");
         }
 
@@ -522,7 +730,7 @@ public class AdminService {
     }
 
     @Transactional
-    public void checkoutPOS(Integer id, Integer paymentMethodId, String note, Integer customerId) {
+    public void checkoutPOS(Integer id, Integer paymentMethodId, String note, Integer customerId, String voucherCode) {
         // id là id_gio_hang
         GioHang gh = gioHangRepository.findById(id).orElseThrow();
         List<GioHangChiTiet> items = gioHangChiTietRepository.findByGioHangId(id);
@@ -530,6 +738,35 @@ public class AdminService {
 
         PtThanhToan pttt = ptThanhToanRepository.findById(paymentMethodId).orElseThrow();
         NguoiDung customer = (customerId != null) ? nguoiDungRepository.findById(customerId).orElseThrow() : null;
+        BigDecimal tongTienHang = calculateInvoiceSubtotal(items);
+        MaGiamGia voucher = null;
+        BigDecimal tienGiam = BigDecimal.ZERO;
+        if (voucherCode != null && !voucherCode.isBlank()) {
+            voucher = maGiamGiaRepository.findByMaCode(voucherCode)
+                    .orElseThrow(() -> new RuntimeException("Voucher không tồn tại"));
+            if (voucher.getNgayBatDau() != null && LocalDateTime.now().isBefore(voucher.getNgayBatDau())) {
+                throw new RuntimeException("Voucher chưa hiệu lực");
+            }
+            if (voucher.getNgayKetHuc() != null && LocalDateTime.now().isAfter(voucher.getNgayKetHuc())) {
+                throw new RuntimeException("Voucher đã hết hạn");
+            }
+            if (voucher.getSoLuong() != null && voucher.getSoLuongDaDung() != null && voucher.getSoLuong() <= voucher.getSoLuongDaDung()) {
+                throw new RuntimeException("Voucher đã hết lượt sử dụng");
+            }
+            if (voucher.getGiaTriToiThieu() != null && tongTienHang.compareTo(voucher.getGiaTriToiThieu()) < 0) {
+                throw new RuntimeException("Đơn hàng chưa đạt giá trị tối thiểu để áp dụng voucher");
+            }
+            if ("PERCENT".equals(voucher.getKieuGiamGia())) {
+                tienGiam = tongTienHang.multiply(voucher.getGiaTriGiam() != null ? voucher.getGiaTriGiam() : BigDecimal.ZERO)
+                        .divide(BigDecimal.valueOf(100));
+                if (voucher.getGiaTriGiamToiDa() != null && tienGiam.compareTo(voucher.getGiaTriGiamToiDa()) > 0) {
+                    tienGiam = voucher.getGiaTriGiamToiDa();
+                }
+            } else {
+                tienGiam = voucher.getGiaTriGiam() != null ? voucher.getGiaTriGiam() : BigDecimal.ZERO;
+            }
+            tienGiam = tienGiam.min(tongTienHang).max(BigDecimal.ZERO);
+        }
 
         // B1: Tạo HoaDon thật (DA_GIAO)
         HoaDon hd = new HoaDon();
@@ -542,6 +779,10 @@ public class AdminService {
         hd.setLoaiDonHang("TAI_QUAY");
         hd.setGhiChu(note);
         hd.setNgayCapNhat(java.time.LocalDateTime.now());
+        hd.setTongTienHang(tongTienHang);
+        hd.setTienGiam(tienGiam);
+        hd.setTongThanhToan(tongTienHang.subtract(tienGiam).max(BigDecimal.ZERO));
+        hd.setMaGiamGia(voucher);
         
         // Các giá trị tiền sẽ được Trigger trg_update_tong_tien_hd tự tính khi chèn chi tiết
         hd = hoaDonRepository.save(hd);
@@ -560,6 +801,18 @@ public class AdminService {
             detail.setChatLieu(item.getSanPhamChiTiet().getChatLieu().getTen());
             detail.setMaHoaDonChiTiet("HDCT-" + System.currentTimeMillis());
             hoaDonChiTietRepository.save(detail);
+        }
+
+        hd.setTongTienHang(tongTienHang);
+        hd.setTienGiam(tienGiam);
+        hd.setTongThanhToan(tongTienHang.subtract(tienGiam).max(BigDecimal.ZERO));
+        hd.setMaGiamGia(voucher);
+        hd = hoaDonRepository.save(hd);
+
+        if (voucher != null) {
+            int usedCount = voucher.getSoLuongDaDung() != null ? voucher.getSoLuongDaDung() : 0;
+            voucher.setSoLuongDaDung(usedCount + 1);
+            maGiamGiaRepository.save(voucher);
         }
 
         // B2: Đổi trạng thái giỏ hàng
@@ -592,6 +845,16 @@ public class AdminService {
         }
         // Sau đó xóa giỏ hàng
         gioHangRepository.deleteById(id);
+    }
+
+    private BigDecimal calculateInvoiceSubtotal(List<GioHangChiTiet> items) {
+        return items.stream()
+                .map(item -> {
+                    BigDecimal donGia = item.getDonGia() != null ? item.getDonGia() : BigDecimal.ZERO;
+                    int soLuong = item.getSoLuong() != null ? item.getSoLuong() : 0;
+                    return donGia.multiply(BigDecimal.valueOf(soLuong));
+                })
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
     }
 
     // --- Attributes ---
