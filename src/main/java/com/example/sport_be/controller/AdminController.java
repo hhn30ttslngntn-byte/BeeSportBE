@@ -5,9 +5,11 @@ import com.example.sport_be.service.AdminService;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.time.LocalDate;
 import java.util.List;
 
 @RestController
@@ -110,9 +112,14 @@ public class AdminController {
         return ResponseEntity.ok(adminService.getBillDetail(id));
     }
 
-    @GetMapping("/revenue")
-    public ResponseEntity<Object> getRevenueSummary() {
-        return ResponseEntity.ok(adminService.getRevenueSummary());
+    @GetMapping("/statistics")
+    public ResponseEntity<Object> getDashboardStatistics(
+            @RequestParam(defaultValue = "day") String mode,
+            @RequestParam(defaultValue = "quantity") String metric,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to
+    ) {
+        return ResponseEntity.ok(adminService.getDashboardStatistics(mode, metric, from, to));
     }
 
     // --- Voucher ---

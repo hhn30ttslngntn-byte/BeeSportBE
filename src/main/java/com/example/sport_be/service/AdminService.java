@@ -9,11 +9,14 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.YearMonth;
 import java.text.Normalizer;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -300,73 +303,301 @@ public class AdminService {
                 .toList();
     }
 
-    public Map<String, Object> getRevenueSummary() {
-        List<HoaDon> deliveredBills = hoaDonRepository.findAll().stream()
-                .filter(bill -> "DA_GIAO".equals(bill.getTrangThaiDon()))
-                .toList();
-
-        LocalDate today = LocalDate.now();
-        List<HoaDon> todayBills = deliveredBills.stream()
-                .filter(bill -> bill.getNgayTao() != null && today.equals(bill.getNgayTao().toLocalDate()))
-                .toList();
-
-        BigDecimal todayRevenue = todayBills.stream()
-                .map(HoaDon::getTongThanhToan)
-                .filter(java.util.Objects::nonNull)
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
-
-        int todayOrders = todayBills.size();
-        int todayProductsSold = todayBills.stream()
-                .map(HoaDon::getId)
-                .filter(java.util.Objects::nonNull)
-                .mapToInt(id -> hoaDonChiTietRepository.findByHoaDonId(id).stream()
-                        .map(HoaDonChiTiet::getSoLuong)
-                        .filter(java.util.Objects::nonNull)
-                        .mapToInt(Integer::intValue)
-                        .sum())
-                .sum();
-
-        Map<LocalDate, List<HoaDon>> groupedByDate = new java.util.TreeMap<>(java.util.Comparator.reverseOrder());
-        for (HoaDon bill : deliveredBills) {
-            if (bill.getNgayTao() == null) continue;
-            groupedByDate.computeIfAbsent(bill.getNgayTao().toLocalDate(), key -> new ArrayList<>()).add(bill);
+    public Map<String, Object> getDashboardStatistics(String mode, String metric, LocalDate from, LocalDate to) {
+        String normalizedMode = mode == null ? "day" : mode.trim().toLowerCase();
+        if (!List.of("day", "month", "year").contains(normalizedMode)) {
+            throw new RuntimeException("mode must be one of: day, month, year");
         }
 
-        List<Map<String, Object>> dailyRevenue = groupedByDate.entrySet().stream()
+        String normalizedMetric = metric == null ? "quantity" : metric.trim().toLowerCase();
+        if (!List.of("quantity", "revenue").contains(normalizedMetric)) {
+            throw new RuntimeException("metric must be one of: quantity, revenue");
+        }
+
+        LocalDate today = LocalDate.now();
+        LocalDate rangeFrom = from == null ? today.minusDays(29) : from;
+        LocalDate rangeTo = to == null ? today : to;
+        if (rangeFrom.isAfter(rangeTo)) {
+            throw new RuntimeException("from must be less than or equal to to");
+        }
+
+        List<HoaDon> allBills = hoaDonRepository.findAll().stream()
+                .filter(bill -> bill.getNgayTao() != null)
+                .toList();
+
+        List<HoaDon> deliveredBills = allBills.stream()
+                .filter(this::isDeliveredBill)
+                .toList();
+
+        Map<String, Object> overview = buildOverviewSummary(today, deliveredBills);
+        Map<String, Object> chart = buildChartData(normalizedMode, normalizedMetric, rangeFrom, rangeTo, deliveredBills);
+        Map<String, Object> orderStatus = buildOrderStatusData(rangeFrom, rangeTo, allBills);
+        List<Map<String, Object>> employeeStats = buildEmployeeStats(rangeFrom, rangeTo, allBills);
+
+        Map<String, Object> filters = new LinkedHashMap<>();
+        filters.put("from", rangeFrom);
+        filters.put("to", rangeTo);
+        filters.put("mode", normalizedMode);
+        filters.put("metric", normalizedMetric);
+
+        Map<String, Object> response = new LinkedHashMap<>();
+        response.put("filters", filters);
+        response.put("overview", overview);
+        response.put("chart", chart);
+        response.put("orderStatus", orderStatus);
+        response.put("employeeStats", employeeStats);
+        return response;
+    }
+
+    private Map<String, Object> buildOverviewSummary(LocalDate today, List<HoaDon> deliveredBills) {
+        LocalDate yesterday = today.minusDays(1);
+        BigDecimal todayRevenue = calculateRevenueByDateRange(deliveredBills, today, today);
+        BigDecimal yesterdayRevenue = calculateRevenueByDateRange(deliveredBills, yesterday, yesterday);
+
+        LocalDate thisWeekFrom = today.with(DayOfWeek.MONDAY);
+        LocalDate thisWeekTo = today.with(DayOfWeek.SUNDAY);
+        LocalDate lastWeekFrom = thisWeekFrom.minusWeeks(1);
+        LocalDate lastWeekTo = thisWeekTo.minusWeeks(1);
+        BigDecimal weekRevenue = calculateRevenueByDateRange(deliveredBills, thisWeekFrom, thisWeekTo);
+        BigDecimal lastWeekRevenue = calculateRevenueByDateRange(deliveredBills, lastWeekFrom, lastWeekTo);
+
+        LocalDate thisMonthFrom = today.withDayOfMonth(1);
+        LocalDate thisMonthTo = today.withDayOfMonth(today.lengthOfMonth());
+        LocalDate lastMonthBase = today.minusMonths(1);
+        LocalDate lastMonthFrom = lastMonthBase.withDayOfMonth(1);
+        LocalDate lastMonthTo = lastMonthBase.withDayOfMonth(lastMonthBase.lengthOfMonth());
+        BigDecimal monthRevenue = calculateRevenueByDateRange(deliveredBills, thisMonthFrom, thisMonthTo);
+        BigDecimal lastMonthRevenue = calculateRevenueByDateRange(deliveredBills, lastMonthFrom, lastMonthTo);
+
+        Map<String, Object> todayCard = new LinkedHashMap<>();
+        todayCard.put("revenue", todayRevenue);
+        todayCard.put("changePercent", calculatePercentChange(todayRevenue, yesterdayRevenue));
+        todayCard.put("compareBaseRevenue", yesterdayRevenue);
+
+        Map<String, Object> weekCard = new LinkedHashMap<>();
+        weekCard.put("revenue", weekRevenue);
+        weekCard.put("changePercent", calculatePercentChange(weekRevenue, lastWeekRevenue));
+        weekCard.put("compareBaseRevenue", lastWeekRevenue);
+
+        Map<String, Object> monthCard = new LinkedHashMap<>();
+        monthCard.put("revenue", monthRevenue);
+        monthCard.put("changePercent", calculatePercentChange(monthRevenue, lastMonthRevenue));
+        monthCard.put("compareBaseRevenue", lastMonthRevenue);
+
+        Map<String, Object> overview = new LinkedHashMap<>();
+        overview.put("today", todayCard);
+        overview.put("week", weekCard);
+        overview.put("month", monthCard);
+        return overview;
+    }
+
+    private Map<String, Object> buildChartData(
+            String mode,
+            String metric,
+            LocalDate from,
+            LocalDate to,
+            List<HoaDon> deliveredBills
+    ) {
+        Map<String, List<HoaDon>> grouped = new LinkedHashMap<>();
+        if ("year".equals(mode)) {
+            for (int year = from.getYear(); year <= to.getYear(); year++) {
+                grouped.put(String.valueOf(year), new ArrayList<>());
+            }
+            for (HoaDon bill : deliveredBills) {
+                LocalDate billDate = bill.getNgayTao().toLocalDate();
+                if (billDate.isBefore(from) || billDate.isAfter(to)) continue;
+                grouped.get(String.valueOf(billDate.getYear())).add(bill);
+            }
+        } else if ("month".equals(mode)) {
+            YearMonth start = YearMonth.from(from);
+            YearMonth end = YearMonth.from(to);
+            YearMonth cursor = start;
+            while (!cursor.isAfter(end)) {
+                grouped.put(cursor.toString(), new ArrayList<>());
+                cursor = cursor.plusMonths(1);
+            }
+            for (HoaDon bill : deliveredBills) {
+                LocalDate billDate = bill.getNgayTao().toLocalDate();
+                if (billDate.isBefore(from) || billDate.isAfter(to)) continue;
+                grouped.get(YearMonth.from(billDate).toString()).add(bill);
+            }
+        } else {
+            LocalDate cursor = from;
+            while (!cursor.isAfter(to)) {
+                grouped.put(cursor.toString(), new ArrayList<>());
+                cursor = cursor.plusDays(1);
+            }
+            for (HoaDon bill : deliveredBills) {
+                LocalDate billDate = bill.getNgayTao().toLocalDate();
+                if (billDate.isBefore(from) || billDate.isAfter(to)) continue;
+                grouped.get(billDate.toString()).add(bill);
+            }
+        }
+
+        List<Map<String, Object>> data = grouped.entrySet().stream()
                 .map(entry -> {
-                    BigDecimal revenue = entry.getValue().stream()
-                            .map(HoaDon::getTongThanhToan)
-                            .filter(java.util.Objects::nonNull)
+                    List<HoaDon> bucket = entry.getValue();
+                    BigDecimal revenue = bucket.stream()
+                            .map(this::calculateProductRevenue)
                             .reduce(BigDecimal.ZERO, BigDecimal::add);
+                    int quantity = bucket.stream().mapToInt(this::calculateDeliveredQuantity).sum();
 
-                    int productsSold = entry.getValue().stream()
-                            .map(HoaDon::getId)
-                            .filter(java.util.Objects::nonNull)
-                            .mapToInt(id -> hoaDonChiTietRepository.findByHoaDonId(id).stream()
-                                    .map(HoaDonChiTiet::getSoLuong)
-                                    .filter(java.util.Objects::nonNull)
-                                    .mapToInt(Integer::intValue)
-                                    .sum())
-                            .sum();
-
-                    Map<String, Object> item = new LinkedHashMap<>();
-                    item.put("date", entry.getKey());
-                    item.put("orders", entry.getValue().size());
-                    item.put("productsSold", productsSold);
-                    item.put("revenue", revenue);
-                    return item;
+                    Map<String, Object> point = new LinkedHashMap<>();
+                    point.put("label", entry.getKey());
+                    point.put("orders", bucket.size());
+                    point.put("quantity", quantity);
+                    point.put("revenue", revenue);
+                    point.put("value", "revenue".equals(metric) ? revenue : BigDecimal.valueOf(quantity));
+                    return point;
                 })
                 .toList();
 
-        Map<String, Object> stats = new LinkedHashMap<>();
-        stats.put("todayRevenue", todayRevenue);
-        stats.put("todayOrders", todayOrders);
-        stats.put("todayProductsSold", todayProductsSold);
+        Map<String, Object> chart = new LinkedHashMap<>();
+        chart.put("mode", mode);
+        chart.put("metric", metric);
+        chart.put("data", data);
+        return chart;
+    }
+
+    private Map<String, Object> buildOrderStatusData(LocalDate from, LocalDate to, List<HoaDon> allBills) {
+        List<HoaDon> inRange = allBills.stream()
+                .filter(bill -> {
+                    LocalDate billDate = bill.getNgayTao().toLocalDate();
+                    return !billDate.isBefore(from) && !billDate.isAfter(to);
+                })
+                .toList();
+
+        Map<String, Integer> grouped = new LinkedHashMap<>();
+        grouped.put("HUY_GIAO_DICH", 0);
+        grouped.put("DANG_XU_LY", 0);
+        grouped.put("THANH_CONG", 0);
+        grouped.put("DA_HUY", 0);
+
+        for (HoaDon bill : inRange) {
+            String groupKey = mapStatusGroup(bill.getTrangThaiDon());
+            grouped.put(groupKey, grouped.get(groupKey) + 1);
+        }
+
+        List<Map<String, Object>> items = new ArrayList<>();
+        items.add(buildStatusItem("HUY_GIAO_DICH", "Hủy giao dịch", grouped.get("HUY_GIAO_DICH"), "#ef4444"));
+        items.add(buildStatusItem("DANG_XU_LY", "Đang xử lý", grouped.get("DANG_XU_LY"), "#4f46e5"));
+        items.add(buildStatusItem("THANH_CONG", "Thành công", grouped.get("THANH_CONG"), "#22c55e"));
+        items.add(buildStatusItem("DA_HUY", "Đã hủy", grouped.get("DA_HUY"), "#38bdf8"));
 
         Map<String, Object> response = new LinkedHashMap<>();
-        response.put("stats", stats);
-        response.put("dailyRevenue", dailyRevenue);
+        response.put("totalOrders", inRange.size());
+        response.put("items", items);
         return response;
+    }
+
+    private Map<String, Object> buildStatusItem(String key, String label, Integer count, String color) {
+        Map<String, Object> item = new LinkedHashMap<>();
+        item.put("key", key);
+        item.put("label", label);
+        item.put("count", count);
+        item.put("color", color);
+        return item;
+    }
+
+    private List<Map<String, Object>> buildEmployeeStats(LocalDate from, LocalDate to, List<HoaDon> allBills) {
+        Map<Integer, Map<String, Object>> byEmployee = new LinkedHashMap<>();
+
+        for (HoaDon bill : allBills) {
+            if (bill.getNgayTao() == null || bill.getNguoiDung() == null || bill.getNguoiDung().getId() == null) {
+                continue;
+            }
+
+            LocalDate billDate = bill.getNgayTao().toLocalDate();
+            if (billDate.isBefore(from) || billDate.isAfter(to)) {
+                continue;
+            }
+
+            NguoiDung account = bill.getNguoiDung();
+            String roleCode = account.getVaiTro() != null ? account.getVaiTro().getMa() : null;
+            if (!"ADMIN".equalsIgnoreCase(roleCode) && !"STAFF".equalsIgnoreCase(roleCode)) {
+                continue;
+            }
+
+            Integer employeeId = account.getId();
+            Map<String, Object> stats = byEmployee.computeIfAbsent(employeeId, key -> {
+                Map<String, Object> init = new LinkedHashMap<>();
+                init.put("employeeId", account.getId());
+                init.put("employeeCode", account.getMaNguoiDung());
+                init.put("employeeName", account.getHoTen());
+                init.put("totalOrders", 0);
+                init.put("successfulOrders", 0);
+                init.put("revenue", BigDecimal.ZERO);
+                return init;
+            });
+
+            stats.put("totalOrders", (Integer) stats.get("totalOrders") + 1);
+            if (isDeliveredBill(bill)) {
+                stats.put("successfulOrders", (Integer) stats.get("successfulOrders") + 1);
+                stats.put("revenue", ((BigDecimal) stats.get("revenue")).add(calculateProductRevenue(bill)));
+            }
+        }
+
+        return byEmployee.values().stream()
+                .sorted((left, right) -> Integer.compare((Integer) right.get("totalOrders"), (Integer) left.get("totalOrders")))
+                .toList();
+    }
+
+    private BigDecimal calculateRevenueByDateRange(List<HoaDon> bills, LocalDate from, LocalDate to) {
+        return bills.stream()
+                .filter(bill -> {
+                    LocalDate billDate = bill.getNgayTao().toLocalDate();
+                    return !billDate.isBefore(from) && !billDate.isAfter(to);
+                })
+                .map(this::calculateProductRevenue)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+    }
+
+    private BigDecimal calculatePercentChange(BigDecimal current, BigDecimal previous) {
+        if (previous == null || previous.compareTo(BigDecimal.ZERO) == 0) {
+            return null;
+        }
+        return current.subtract(previous)
+                .multiply(BigDecimal.valueOf(100))
+                .divide(previous, 2, RoundingMode.HALF_UP);
+    }
+
+    private int calculateDeliveredQuantity(HoaDon bill) {
+        if (bill.getId() == null) {
+            return 0;
+        }
+        return hoaDonChiTietRepository.findByHoaDonId(bill.getId()).stream()
+                .map(HoaDonChiTiet::getSoLuong)
+                .filter(java.util.Objects::nonNull)
+                .mapToInt(Integer::intValue)
+                .sum();
+    }
+
+    private boolean isDeliveredBill(HoaDon bill) {
+        return "DA_GIAO".equalsIgnoreCase(bill.getTrangThaiDon());
+    }
+
+    private String mapStatusGroup(String status) {
+        if (status == null || status.isBlank()) {
+            return "DANG_XU_LY";
+        }
+        return switch (status.trim().toUpperCase()) {
+            case "HOAN_TRA", "HUY_GIAO_DICH" -> "HUY_GIAO_DICH";
+            case "DA_GIAO" -> "THANH_CONG";
+            case "DA_HUY" -> "DA_HUY";
+            default -> "DANG_XU_LY";
+        };
+    }
+
+    private BigDecimal calculateProductRevenue(HoaDon bill) {
+        BigDecimal tongTienHang = bill.getTongTienHang();
+        BigDecimal tienGiam = bill.getTienGiam() != null ? bill.getTienGiam() : BigDecimal.ZERO;
+        if (tongTienHang != null) {
+            return tongTienHang.subtract(tienGiam).max(BigDecimal.ZERO);
+        }
+
+        BigDecimal tongThanhToan = bill.getTongThanhToan() != null ? bill.getTongThanhToan() : BigDecimal.ZERO;
+        BigDecimal phiVanChuyen = bill.getPhiVanChuyen() != null ? bill.getPhiVanChuyen() : BigDecimal.ZERO;
+        return tongThanhToan.subtract(phiVanChuyen).max(BigDecimal.ZERO);
     }
 
     public HoaDon updateBillStatus(Integer id, String status) {
