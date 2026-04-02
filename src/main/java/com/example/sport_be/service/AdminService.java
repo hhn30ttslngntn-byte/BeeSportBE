@@ -1,5 +1,8 @@
 package com.example.sport_be.service;
 
+import com.example.sport_be.dto.DoiTraRequest;
+import com.example.sport_be.dto.DoiTraChiTietRequest;
+
 import com.example.sport_be.entity.*;
 import com.example.sport_be.repository.*;
 import lombok.RequiredArgsConstructor;
@@ -45,6 +48,8 @@ public class AdminService {
     private final GioHangChiTietRepository gioHangChiTietRepository;
     private final HinhAnhSanPhamRepository hinhAnhSanPhamRepository;
     private final DiaChiVanChuyenRepository diaChiVanChuyenRepository;
+    private final DoiTraRepository doiTraRepository;
+    private final DoiTraChiTietRepository doiTraChiTietRepository;
 
     // --- Product ---
     public List<SanPham> getAllProducts() {
@@ -855,6 +860,101 @@ public class AdminService {
                     return donGia.multiply(BigDecimal.valueOf(soLuong));
                 })
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
+    }
+
+    // --- Đổi Trả (Admin ép tạo) ---
+
+    /**
+     * Admin tạo yêu cầu đổi trả thay khách từ màn Quản Lý Hóa Đơn.
+     * Bỏ qua rule 7 ngày nhưng vẫn check số lượng trả hợp lệ.
+     * Ảnh bắt buộc.
+     */
+    @Transactional
+    public DoiTra createDoiTraByAdmin(DoiTraRequest request, MultipartFile[] files, String baseUrl) {
+        // Hardcode audit: currentUserId = 1
+        Integer currentUserId = 1;
+
+        // 1. Validate hóa đơn tồn tại
+        HoaDon hoaDon = hoaDonRepository.findById(request.getHoaDonId())
+                .orElseThrow(() -> new RuntimeException("Hóa đơn không tồn tại"));
+
+        // 2. Validate ảnh bắt buộc
+        if (files == null || files.length == 0) {
+            throw new RuntimeException("Vui lòng tải lên ít nhất 1 ảnh minh chứng");
+        }
+
+        // 3. Validate danh sách chi tiết
+        if (request.getChiTiets() == null || request.getChiTiets().isEmpty()) {
+            throw new RuntimeException("Danh sách sản phẩm đổi trả không được để trống");
+        }
+
+        // 4. Tạo đối tượng DoiTra
+        DoiTra doiTra = new DoiTra();
+        doiTra.setHoaDon(hoaDon);
+        doiTra.setLyDo(request.getLyDo());
+        doiTra.setTrangThai("CHO_XAC_NHAN_HOAN");
+
+        // 5. Lưu trước để có ID cho thư mục ảnh
+        doiTra = doiTraRepository.save(doiTra);
+
+        // 6. Lưu ảnh minh chứng
+        String[] savedPaths = com.example.sport_be.config.FileStorageUtils.saveFiles(files, doiTra.getId(), baseUrl);
+        // Lưu dưới dạng JSON array
+        doiTra.setDanhSachAnh("[" + String.join(",", java.util.Arrays.stream(savedPaths).map(p -> "\"" + p + "\"").toArray(String[]::new)) + "]");
+
+        // 7. Xử lý từng dòng chi tiết
+        BigDecimal tongTienHoan = BigDecimal.ZERO;
+        List<DoiTraChiTiet> chiTietList = new ArrayList<>();
+
+        for (DoiTraChiTietRequest ctReq : request.getChiTiets()) {
+            HoaDonChiTiet hdct = hoaDonChiTietRepository.findById(ctReq.getHoaDonChiTietId())
+                    .orElseThrow(() -> new RuntimeException("Hóa đơn chi tiết ID=" + ctReq.getHoaDonChiTietId() + " không tồn tại"));
+
+            // Validate hdct thuộc hóa đơn này
+            if (!hdct.getHoaDon().getId().equals(hoaDon.getId())) {
+                throw new RuntimeException("Sản phẩm ID=" + ctReq.getHoaDonChiTietId() + " không thuộc hóa đơn này");
+            }
+
+            // Validate số lượng trả (tính cả các lần đổi trả trước)
+            Integer daTra = doiTraChiTietRepository.sumSoLuongTraByHoaDonChiTietId(hdct.getId());
+            int soLuongConLai = hdct.getSoLuong() - daTra;
+            if (ctReq.getSoLuongTra() <= 0 || ctReq.getSoLuongTra() > soLuongConLai) {
+                throw new RuntimeException("Số lượng trả không hợp lệ cho sản phẩm '" + hdct.getTenSanPham()
+                        + "'. Đã trả: " + daTra + ", còn lại: " + soLuongConLai);
+            }
+
+            // Tính giá trị hoàn = (đơn giá * số lượng trả) - (tỷ lệ voucher phân bổ)
+            BigDecimal giaTriHoanItemGoc = hdct.getDonGia().multiply(BigDecimal.valueOf(ctReq.getSoLuongTra()));
+            BigDecimal tienGiamCuaHoaDon = hoaDon.getTienGiam() != null ? hoaDon.getTienGiam() : BigDecimal.ZERO;
+            BigDecimal tongTienHangCuaHoaDon = (hoaDon.getTongTienHang() != null && hoaDon.getTongTienHang().compareTo(BigDecimal.ZERO) > 0) 
+                                                ? hoaDon.getTongTienHang() : BigDecimal.ONE;
+            
+            BigDecimal tienGiamPhanBo = giaTriHoanItemGoc.multiply(tienGiamCuaHoaDon)
+                    .divide(tongTienHangCuaHoaDon, 0, java.math.RoundingMode.HALF_UP);
+                    
+            BigDecimal giaTriHoan = giaTriHoanItemGoc.subtract(tienGiamPhanBo);
+            DoiTraChiTiet dtct = new DoiTraChiTiet();
+            dtct.setDoiTra(doiTra);
+            dtct.setHoaDonChiTiet(hdct);
+            dtct.setSoLuongTra(ctReq.getSoLuongTra());
+            dtct.setGiaTriHoan(giaTriHoan);
+            chiTietList.add(dtct);
+
+            tongTienHoan = tongTienHoan.add(giaTriHoan);
+        }
+
+        // 8. Lưu chi tiết và cập nhật tổng tiền hoàn
+        doiTraChiTietRepository.saveAll(chiTietList);
+        doiTra.setTongTienHoan(tongTienHoan);
+        doiTra.setChiTiets(chiTietList);
+
+        // 9. Đánh dấu hóa đơn có hoàn trả
+        if (hoaDon.getHoanTra() == null) {
+            hoaDon.setHoanTra(LocalDateTime.now());
+            hoaDonRepository.save(hoaDon);
+        }
+
+        return doiTraRepository.save(doiTra);
     }
 
     // --- Attributes ---

@@ -246,4 +246,18 @@ public class AdminController {
     public ResponseEntity<KichThuoc> saveSize(@RequestBody KichThuoc size) { return ResponseEntity.ok(adminService.saveSize(size)); }
     @PostMapping("/materials")
     public ResponseEntity<ChatLieu> saveMaterial(@RequestBody ChatLieu material) { return ResponseEntity.ok(adminService.saveMaterial(material)); }
+
+    // --- Đổi Trả ---
+    @PostMapping("/doi-tra/request-by-admin")
+    public ResponseEntity<?> createDoiTraByAdmin(
+            @RequestPart("data") com.example.sport_be.dto.DoiTraRequest request,
+            @RequestPart("files") MultipartFile[] files
+    ) {
+        try {
+            String baseUrl = httpServletRequest.getScheme() + "://" + httpServletRequest.getServerName() + ":" + httpServletRequest.getServerPort();
+            return ResponseEntity.ok(adminService.createDoiTraByAdmin(request, files, baseUrl));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(java.util.Map.of("error", e.getMessage()));
+        }
+    }
 }

@@ -1,5 +1,8 @@
 package com.example.sport_be.service;
 
+import com.example.sport_be.dto.DoiTraRequest;
+import com.example.sport_be.dto.DoiTraChiTietRequest;
+
 import com.example.sport_be.dto.CheckoutResponse;
 import com.example.sport_be.dto.AddressRequest;
 import com.example.sport_be.dto.AddressResponse;
@@ -54,6 +57,8 @@ public class UserService {
     private final SanPhamYeuThichRepository sanPhamYeuThichRepository;
     private final VNPayService vnpayService;
     private final EntityManager entityManager;
+    private final DoiTraRepository doiTraRepository;
+    private final DoiTraChiTietRepository doiTraChiTietRepository;
     
     private BigDecimal getPromotionPrice(SanPham sp) {
         BigDecimal giaGoc = sp.getGiaGoc();
@@ -548,6 +553,113 @@ public class UserService {
         history.setHoaDon(hoaDon);
         history.setTrangThai("DA_HUY");
         lichSuHoaDonRepository.save(history);
+    }
+
+    // --- Đổi Trả (User yêu cầu) ---
+
+    /**
+     * User tạo yêu cầu đổi trả sản phẩm.
+     * Check hóa đơn DA_GIAO và <= 7 ngày. Phí ship không hoàn.
+     * Ảnh bắt buộc.
+     */
+    @Transactional
+    public DoiTra createDoiTraRequest(DoiTraRequest request, org.springframework.web.multipart.MultipartFile[] files, String baseUrl) {
+        // Hardcode audit: currentUserId = 1
+        Integer currentUserId = 1;
+
+        // 1. Validate hóa đơn tồn tại
+        HoaDon hoaDon = hoaDonRepository.findById(request.getHoaDonId())
+                .orElseThrow(() -> new RuntimeException("Hóa đơn không tồn tại"));
+
+        // 2. Check trạng thái phải là DA_GIAO
+        if (!"DA_GIAO".equals(hoaDon.getTrangThaiDon())) {
+            throw new RuntimeException("Chỉ có thể yêu cầu đổi trả cho đơn hàng đã giao");
+        }
+
+        // 3. Check thời gian <= 7 ngày kể từ ngày giao (ngay_cap_nhat)
+        java.time.LocalDateTime ngayGiao = hoaDon.getNgayCapNhat();
+        if (ngayGiao == null) ngayGiao = hoaDon.getNgayTao();
+        if (java.time.LocalDateTime.now().isAfter(ngayGiao.plusDays(7))) {
+            throw new RuntimeException("Đã quá thời hạn 7 ngày để yêu cầu đổi trả");
+        }
+
+        // 4. Validate ảnh bắt buộc
+        if (files == null || files.length == 0) {
+            throw new RuntimeException("Vui lòng tải lên ít nhất 1 ảnh minh chứng");
+        }
+
+        // 5. Validate danh sách chi tiết
+        if (request.getChiTiets() == null || request.getChiTiets().isEmpty()) {
+            throw new RuntimeException("Danh sách sản phẩm đổi trả không được để trống");
+        }
+
+        // 6. Tạo đối tượng DoiTra
+        DoiTra doiTra = new DoiTra();
+        doiTra.setHoaDon(hoaDon);
+        doiTra.setLyDo(request.getLyDo());
+        doiTra.setTrangThai("CHO_XAC_NHAN_HOAN");
+
+        // 7. Lưu trước để có ID cho thư mục ảnh
+        doiTra = doiTraRepository.save(doiTra);
+
+        // 8. Lưu ảnh minh chứng
+        String[] savedPaths = com.example.sport_be.config.FileStorageUtils.saveFiles(files, doiTra.getId(), baseUrl);
+        doiTra.setDanhSachAnh("[" + String.join(",", java.util.Arrays.stream(savedPaths).map(p -> "\"" + p + "\"").toArray(String[]::new)) + "]");
+
+        // 9. Xử lý từng dòng chi tiết
+        java.math.BigDecimal tongTienHoan = java.math.BigDecimal.ZERO;
+        java.util.List<DoiTraChiTiet> chiTietList = new java.util.ArrayList<>();
+
+        for (DoiTraChiTietRequest ctReq : request.getChiTiets()) {
+            HoaDonChiTiet hdct = hoaDonChiTietRepository.findById(ctReq.getHoaDonChiTietId())
+                    .orElseThrow(() -> new RuntimeException("Hóa đơn chi tiết ID=" + ctReq.getHoaDonChiTietId() + " không tồn tại"));
+
+            // Validate hdct thuộc hóa đơn này
+            if (!hdct.getHoaDon().getId().equals(hoaDon.getId())) {
+                throw new RuntimeException("Sản phẩm ID=" + ctReq.getHoaDonChiTietId() + " không thuộc hóa đơn này");
+            }
+
+            // Validate số lượng trả (tính cả các lần đổi trả trước)
+            Integer daTra = doiTraChiTietRepository.sumSoLuongTraByHoaDonChiTietId(hdct.getId());
+            int soLuongConLai = hdct.getSoLuong() - daTra;
+            if (ctReq.getSoLuongTra() <= 0 || ctReq.getSoLuongTra() > soLuongConLai) {
+                throw new RuntimeException("Số lượng trả không hợp lệ cho sản phẩm '" + hdct.getTenSanPham()
+                        + "'. Đã trả: " + daTra + ", còn lại: " + soLuongConLai);
+            }
+
+            // Tính giá trị hoàn = (đơn giá * số lượng trả) - (tỷ lệ voucher phân bổ)
+            BigDecimal giaTriHoanItemGoc = hdct.getDonGia().multiply(BigDecimal.valueOf(ctReq.getSoLuongTra()));
+            BigDecimal tienGiamCuaHoaDon = hoaDon.getTienGiam() != null ? hoaDon.getTienGiam() : BigDecimal.ZERO;
+            BigDecimal tongTienHangCuaHoaDon = (hoaDon.getTongTienHang() != null && hoaDon.getTongTienHang().compareTo(BigDecimal.ZERO) > 0) 
+                                                ? hoaDon.getTongTienHang() : BigDecimal.ONE;
+            
+            BigDecimal tienGiamPhanBo = giaTriHoanItemGoc.multiply(tienGiamCuaHoaDon)
+                    .divide(tongTienHangCuaHoaDon, 0, java.math.RoundingMode.HALF_UP);
+                    
+            BigDecimal giaTriHoan = giaTriHoanItemGoc.subtract(tienGiamPhanBo);
+
+            DoiTraChiTiet dtct = new DoiTraChiTiet();
+            dtct.setDoiTra(doiTra);
+            dtct.setHoaDonChiTiet(hdct);
+            dtct.setSoLuongTra(ctReq.getSoLuongTra());
+            dtct.setGiaTriHoan(giaTriHoan);
+            chiTietList.add(dtct);
+
+            tongTienHoan = tongTienHoan.add(giaTriHoan);
+        }
+
+        // 10. Lưu chi tiết và cập nhật tổng tiền hoàn
+        doiTraChiTietRepository.saveAll(chiTietList);
+        doiTra.setTongTienHoan(tongTienHoan);
+        doiTra.setChiTiets(chiTietList);
+
+        // 11. Đánh dấu hóa đơn có hoàn trả
+        if (hoaDon.getHoanTra() == null) {
+            hoaDon.setHoanTra(java.time.LocalDateTime.now());
+            hoaDonRepository.save(hoaDon);
+        }
+
+        return doiTraRepository.save(doiTra);
     }
 
     public List<MaGiamGia> getAllVouchers() {
