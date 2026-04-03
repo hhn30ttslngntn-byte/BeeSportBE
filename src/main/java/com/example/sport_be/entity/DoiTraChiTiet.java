@@ -17,6 +17,7 @@ public class DoiTraChiTiet {
 
     @ManyToOne
     @JoinColumn(name = "id_doi_tra")
+    @com.fasterxml.jackson.annotation.JsonIgnore
     private DoiTra doiTra;
 
     @ManyToOne

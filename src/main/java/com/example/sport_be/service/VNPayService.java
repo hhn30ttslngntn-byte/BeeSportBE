@@ -210,16 +210,92 @@ public class VNPayService {
         // === CẦU DAO CỨU SINH - Mở comment dòng dưới khi VNPay gọi thật bị lỗi ===
         // return true;
 
-        // TODO: Thay thế bằng code gọi VNPay Refund API thật
-        // Tham khảo: https://sandbox.vnpayment.vn/apis/docs/truy-van-hoan-tien/
-        // Command: refund
-        // vnp_TransactionType: "02" (Hoàn tiền toàn phần) hoặc "03" (Hoàn tiền một phần)
-        // vnp_Amount: doiTra.getTongTienHoan() * 100
+        if (doiTra == null || doiTra.getHoaDon() == null) {
+            return false;
+        }
 
-        System.out.println("[VNPay Refund DUMMY] Ma doi tra: " + doiTra.getMaDoiTra()
-                + " | Tong tien hoan: " + doiTra.getTongTienHoan());
+        try {
+            String vnp_RequestId = java.util.UUID.randomUUID().toString().replace("-", "");
+            String vnp_Version = "2.1.0";
+            String vnp_Command = "refund";
+            String vnp_TmnCode = vnpTmnCode;
+            
+            // Refund type: 02 (Full), 03 (Partial)
+            // Tạm thời để 03 (Partial) vì đổi trả có thể hoàn 1 phần
+            // Nếu tổng tiền hoàn = tổng hóa đơn -> có thể xài 02
+            String vnp_TransactionType = "03"; 
+            if (doiTra.getTongTienHoan().compareTo(doiTra.getHoaDon().getTongThanhToan()) >= 0) {
+                vnp_TransactionType = "02";
+            }
 
-        // Trả true mặc định cho môi trường DEV (sandbox)
-        return true;
+            String vnp_TxnRef = doiTra.getHoaDon().getId().toString();
+            // Amount * 100
+            String vnp_Amount = doiTra.getTongTienHoan()
+                    .setScale(0, RoundingMode.HALF_UP)
+                    .multiply(BigDecimal.valueOf(100)).toPlainString();
+            
+            String vnp_OrderInfo = "Hoan tien don hang " + vnp_TxnRef;
+            
+            Calendar calendar = Calendar.getInstance(TimeZone.getTimeZone("Asia/Ho_Chi_Minh"));
+            SimpleDateFormat formatter = new SimpleDateFormat("yyyyMMddHHmmss");
+            formatter.setTimeZone(TimeZone.getTimeZone("Asia/Ho_Chi_Minh"));
+            String vnp_TransactionDate = formatter.format(doiTra.getHoaDon().getNgayTao() != null ? 
+                    java.util.Date.from(doiTra.getHoaDon().getNgayTao().atZone(java.time.ZoneId.of("Asia/Ho_Chi_Minh")).toInstant()) : 
+                    calendar.getTime());
+            
+            String vnp_CreateBy = "Admin";
+            String vnp_CreateDate = formatter.format(calendar.getTime());
+            String vnp_IpAddr = "127.0.0.1"; // Hardcode cho backend calling
+
+            // Data string to hash
+            String hashData = vnp_RequestId + "|" + vnp_Version + "|" + vnp_Command + "|" + vnp_TmnCode + "|" +
+                              vnp_TransactionType + "|" + vnp_TxnRef + "|" + vnp_Amount + "|" + vnp_TransactionDate + "|" +
+                              vnp_CreateBy + "|" + vnp_CreateDate + "|" + vnp_IpAddr + "|" + vnp_OrderInfo;
+
+            String vnp_SecureHash = hmacSHA512(vnpHashSecret, hashData);
+
+            java.util.Map<String, String> params = new HashMap<>();
+            params.put("vnp_RequestId", vnp_RequestId);
+            params.put("vnp_Version", vnp_Version);
+            params.put("vnp_Command", vnp_Command);
+            params.put("vnp_TmnCode", vnp_TmnCode);
+            params.put("vnp_TransactionType", vnp_TransactionType);
+            params.put("vnp_TxnRef", vnp_TxnRef);
+            params.put("vnp_Amount", vnp_Amount);
+            params.put("vnp_TransactionDate", vnp_TransactionDate);
+            params.put("vnp_CreateBy", vnp_CreateBy);
+            params.put("vnp_CreateDate", vnp_CreateDate);
+            params.put("vnp_IpAddr", vnp_IpAddr);
+            params.put("vnp_OrderInfo", vnp_OrderInfo);
+            params.put("vnp_SecureHash", vnp_SecureHash);
+
+            // Gửi HTTP POST request tới VNPay
+            String apiUrl = "https://sandbox.vnpayment.vn/merchant_webapi/api/transaction";
+            org.springframework.web.client.RestTemplate restTemplate = new org.springframework.web.client.RestTemplate();
+            
+            org.springframework.http.HttpHeaders headers = new org.springframework.http.HttpHeaders();
+            headers.setContentType(org.springframework.http.MediaType.APPLICATION_JSON);
+            
+            org.springframework.http.HttpEntity<java.util.Map<String, String>> requestEntity = new org.springframework.http.HttpEntity<>(params, headers);
+            
+            org.springframework.http.ResponseEntity<java.util.Map> response = restTemplate.postForEntity(apiUrl, requestEntity, java.util.Map.class);
+            
+            if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
+                String responseCode = (String) response.getBody().get("vnp_ResponseCode");
+                if ("00".equals(responseCode)) {
+                    System.out.println("[VNPay Refund SUCCESS] Ma doi tra: " + doiTra.getMaDoiTra());
+                    return true;
+                } else {
+                    System.err.println("[VNPay Refund ERROR] Cổng từ chối hoàn. Mã lỗi: " + responseCode + " - " + response.getBody().get("vnp_Message"));
+                    return false;
+                }
+            }
+
+            return false;
+        } catch (Exception e) {
+            e.printStackTrace();
+            System.err.println("[VNPay Refund ERROR] Call API Exception: " + e.getMessage());
+            return false;
+        }
     }
 }

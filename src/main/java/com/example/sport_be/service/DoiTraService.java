@@ -113,13 +113,18 @@ public class DoiTraService {
         } else if ("HOAN_TIEN".equals(action)) {
             // --- Nhánh HOÀN TIỀN ---
 
-            // Bước 1: Gọi VNPay hoàn tiền (dummy)
-            Boolean refundResult = vnPayService.processRefund(doiTra);
-            if (!Boolean.TRUE.equals(refundResult)) {
-                // Nếu VNPay trả false -> Exception -> @Transactional Rollback toàn bộ
-                throw new RuntimeException("Hoàn tiền qua VNPay thất bại cho đơn đổi trả mã: "
-                        + doiTra.getMaDoiTra() + ". Vui lòng thử lại sau.");
+            // Bước 1: Kiểm tra phương thức thanh toán và gọi VNPay nếu là VNPAY
+            PtThanhToan ptThanhToan = doiTra.getHoaDon().getPtThanhToan();
+            if (ptThanhToan != null && "VNPAY".equals(ptThanhToan.getMaPtThanhToan())) {
+                Boolean refundResult = vnPayService.processRefund(doiTra);
+                if (!Boolean.TRUE.equals(refundResult)) {
+                    // Nếu VNPay trả false -> Exception -> @Transactional Rollback toàn bộ
+                    throw new RuntimeException("Hoàn tiền qua VNPay thất bại cho đơn đổi trả mã: "
+                            + doiTra.getMaDoiTra() + ". Vui lòng thử lại sau.");
+                }
             }
+            // Nếu là COD hoặc phương thức khác, hệ thống hiểu ngầm nhân viên sẽ chuyển khoản thủ công
+
 
             // Bước 2: Cộng lại tồn kho cho từng SPCT
             List<DoiTraChiTiet> chiTiets = doiTraChiTietRepository.findByDoiTraId(id);

@@ -197,10 +197,12 @@ public class UserController {
     // --- Đổi Trả ---
     @PostMapping("/doi-tra/request")
     public ResponseEntity<?> createDoiTraRequest(
-            @RequestPart("data") com.example.sport_be.dto.DoiTraRequest request,
+            @RequestPart("data") String dataJson,
             @RequestPart("files") MultipartFile[] files
     ) {
         try {
+            com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+            com.example.sport_be.dto.DoiTraRequest request = mapper.readValue(dataJson, com.example.sport_be.dto.DoiTraRequest.class);
             String baseUrl = httpServletRequest.getScheme() + "://" + httpServletRequest.getServerName() + ":" + httpServletRequest.getServerPort();
             return ResponseEntity.ok(userService.createDoiTraRequest(request, files, baseUrl));
         } catch (Exception e) {
