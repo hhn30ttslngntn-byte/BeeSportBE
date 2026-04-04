@@ -33,6 +33,12 @@ public class LichSuThanhToan {
     @Column(name = "trang_thai_thanh_toan", length = 30)
     private String trangThaiThanhToan;
 
+    @Column(name = "vnp_TransactionNo", length = 50)
+    private String vnpTransactionNo;
+
+    @Column(name = "vnp_PayDate", length = 14)
+    private String vnpPayDate;
+
     @Column(name = "ngay_thanh_toan")
     private LocalDateTime ngayThanhToan;
 

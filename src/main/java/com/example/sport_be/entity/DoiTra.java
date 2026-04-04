@@ -3,7 +3,9 @@ package com.example.sport_be.entity;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.List;
 
 @Entity
 @Table(name = "doi_tra")
@@ -25,11 +27,20 @@ public class DoiTra {
     @Column(name = "ly_do", length = 255)
     private String lyDo;
 
+    @Column(name = "danh_sach_anh", columnDefinition = "NVARCHAR(MAX)")
+    private String danhSachAnh;
+
+    @Column(name = "tong_tien_hoan")
+    private BigDecimal tongTienHoan;
+
     @Column(name = "trang_thai", length = 30)
     private String trangThai;
 
     @Column(name = "ngay_yeu_cau")
     private LocalDateTime ngayYeuCau;
+
+    @OneToMany(mappedBy = "doiTra", cascade = CascadeType.ALL, orphanRemoval = true)
+    private List<DoiTraChiTiet> chiTiets;
 
     @PrePersist
     protected void onCreate() {

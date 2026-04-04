@@ -196,4 +196,30 @@ public class VNPayService {
             return "";
         }
     }
+
+    /**
+     * DUMMY - Hoàn tiền qua VNPay cho đơn đổi trả.
+     *
+     * CẦU DAO CỨU SINH: Nếu gọi VNPay thật bị lỗi, mở comment dòng "return true;"
+     * ở đầu hàm để bypass VNPay và rẽ nhánh TRUE tiếp tục lưu DB.
+     *
+     * @param doiTra đối tượng đổi trả cần hoàn tiền
+     * @return true nếu hoàn tiền thành công, false nếu thất bại
+     */
+    public Boolean processRefund(com.example.sport_be.entity.DoiTra doiTra) {
+        // === CẦU DAO CỨU SINH - Mở comment dòng dưới khi VNPay gọi thật bị lỗi ===
+        // return true;
+
+        // TODO: Thay thế bằng code gọi VNPay Refund API thật
+        // Tham khảo: https://sandbox.vnpayment.vn/apis/docs/truy-van-hoan-tien/
+        // Command: refund
+        // vnp_TransactionType: "02" (Hoàn tiền toàn phần) hoặc "03" (Hoàn tiền một phần)
+        // vnp_Amount: doiTra.getTongTienHoan() * 100
+
+        System.out.println("[VNPay Refund DUMMY] Ma doi tra: " + doiTra.getMaDoiTra()
+                + " | Tong tien hoan: " + doiTra.getTongTienHoan());
+
+        // Trả true mặc định cho môi trường DEV (sandbox)
+        return true;
+    }
 }

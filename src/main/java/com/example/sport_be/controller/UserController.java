@@ -17,6 +17,8 @@ import java.io.IOException;
 import java.util.List;
 import java.util.Map;
 
+import org.springframework.web.multipart.MultipartFile;
+
 @RestController
 @RequestMapping("/api/user")
 @RequiredArgsConstructor
@@ -189,6 +191,20 @@ public class UserController {
             return ResponseEntity.ok("Doi mat khau thanh cong");
         } catch (Exception e) {
             return ResponseEntity.badRequest().body(e.getMessage());
+        }
+    }
+
+    // --- Đổi Trả ---
+    @PostMapping("/doi-tra/request")
+    public ResponseEntity<?> createDoiTraRequest(
+            @RequestPart("data") com.example.sport_be.dto.DoiTraRequest request,
+            @RequestPart("files") MultipartFile[] files
+    ) {
+        try {
+            String baseUrl = httpServletRequest.getScheme() + "://" + httpServletRequest.getServerName() + ":" + httpServletRequest.getServerPort();
+            return ResponseEntity.ok(userService.createDoiTraRequest(request, files, baseUrl));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
         }
     }
 }

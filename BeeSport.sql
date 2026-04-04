@@ -1,4 +1,4 @@
-﻿	CREATE DATABASE BeeSport;
+	CREATE DATABASE BeeSport;
 	GO
 	USE BeeSport;
 	GO
@@ -56,24 +56,33 @@
 	);
 	GO
 
-	CREATE TABLE san_pham (
-		id_san_pham INT IDENTITY PRIMARY KEY,
-
-		id_danh_muc INT NOT NULL,
-		id_thuong_hieu INT,
-
-		ma_san_pham NVARCHAR(50) UNIQUE,
-
-		ten_san_pham NVARCHAR(200) NOT NULL,
-
-		gia_goc DECIMAL(18,2) NOT NULL,
-
-		trang_thai BIT DEFAULT 1,
-
-		FOREIGN KEY (id_danh_muc) REFERENCES danh_muc(id_danh_muc),
-		FOREIGN KEY (id_thuong_hieu) REFERENCES thuong_hieu(id_thuong_hieu)
+	CREATE TABLE chat_lieu (
+		id_chat_lieu INT IDENTITY PRIMARY KEY,
+		ma_chat_lieu NVARCHAR(50),
+		ten_chat_lieu NVARCHAR(50),
+		trang_thai BIT DEFAULT 1
 	);
 	GO
+
+	CREATE TABLE san_pham (
+    id_san_pham INT IDENTITY PRIMARY KEY,
+
+    id_danh_muc INT NOT NULL,
+    id_thuong_hieu INT,
+    id_chat_lieu INT, 
+
+    ma_san_pham NVARCHAR(50) UNIQUE,
+    ten_san_pham NVARCHAR(200) NOT NULL,
+
+    gia_goc DECIMAL(18,2) NOT NULL,
+
+    trang_thai BIT DEFAULT 1,
+
+    FOREIGN KEY (id_danh_muc) REFERENCES danh_muc(id_danh_muc),
+    FOREIGN KEY (id_thuong_hieu) REFERENCES thuong_hieu(id_thuong_hieu),
+    FOREIGN KEY (id_chat_lieu) REFERENCES chat_lieu(id_chat_lieu) 
+);
+GO
 
 	CREATE TABLE hinh_anh_san_pham (
 		id_hinh_anh INT IDENTITY PRIMARY KEY,
@@ -101,13 +110,7 @@
 	);
 	GO
 
-	CREATE TABLE chat_lieu (
-		id_chat_lieu INT IDENTITY PRIMARY KEY,
-		ma_chat_lieu NVARCHAR(50),
-		ten_chat_lieu NVARCHAR(50),
-		trang_thai BIT DEFAULT 1
-	);
-	GO
+
 
 
 	CREATE TABLE gio_hang (
@@ -131,38 +134,37 @@
 	ON gio_hang(id_nguoi_dung)
 	WHERE trang_thai = 'DANG_SU_DUNG' AND loai_gio_hang = 'ONLINE';
 
-	CREATE TABLE san_pham_chi_tiet (
-		id_spct INT IDENTITY PRIMARY KEY,
+CREATE TABLE san_pham_chi_tiet (
+    id_spct INT IDENTITY PRIMARY KEY,
 
-		id_san_pham INT NOT NULL,
-		id_kich_thuoc INT NOT NULL,
-		id_mau_sac INT NOT NULL,
-		id_chat_lieu INT NOT NULL,
-		id_thuong_hieu INT NOT NULL,
+    id_san_pham INT NOT NULL,
+    id_kich_thuoc INT NOT NULL,
+    id_mau_sac INT NOT NULL,
+    id_thuong_hieu INT NOT NULL,
 
-		ma_san_pham_chi_tiet NVARCHAR(50) UNIQUE,
+    ma_san_pham_chi_tiet NVARCHAR(50) UNIQUE,
 
-		so_luong INT NOT NULL CHECK (so_luong >= 0),
+    so_luong INT NOT NULL CHECK (so_luong >= 0),
+    so_luong_da_ban INT DEFAULT 0,
 
-		so_luong_da_ban INT DEFAULT 0,
+    gia_ban DECIMAL(18,2) NOT NULL,
 
-		gia_ban DECIMAL(18,2) NOT NULL,
+    trang_thai BIT DEFAULT 1,
 
-		trang_thai BIT DEFAULT 1,
+    FOREIGN KEY (id_san_pham) REFERENCES san_pham(id_san_pham),
+    FOREIGN KEY (id_kich_thuoc) REFERENCES kich_thuoc(id_kich_thuoc),
+    FOREIGN KEY (id_mau_sac) REFERENCES mau_sac(id_mau_sac),
+    FOREIGN KEY (id_thuong_hieu) REFERENCES thuong_hieu(id_thuong_hieu),
 
-		FOREIGN KEY (id_san_pham) REFERENCES san_pham(id_san_pham),
-		FOREIGN KEY (id_kich_thuoc) REFERENCES kich_thuoc(id_kich_thuoc),
-		FOREIGN KEY (id_mau_sac) REFERENCES mau_sac(id_mau_sac),
-		FOREIGN KEY (id_chat_lieu) REFERENCES chat_lieu(id_chat_lieu),
-		FOREIGN KEY (id_thuong_hieu) REFERENCES thuong_hieu(id_thuong_hieu),
-
-		CONSTRAINT unique_spct 
-		UNIQUE (id_san_pham, id_kich_thuoc, id_mau_sac, id_chat_lieu, id_thuong_hieu)
-	);
-	GO
+    CONSTRAINT unique_spct 
+    UNIQUE (id_san_pham, id_kich_thuoc, id_mau_sac, id_thuong_hieu)
+);
+GO
 	ALTER TABLE san_pham_chi_tiet
 	ADD CONSTRAINT chk_sold_qty 
 	CHECK (so_luong_da_ban >= 0);
+
+
 
 	CREATE TABLE danh_gia_san_pham (
 		id_danh_gia INT IDENTITY PRIMARY KEY,
@@ -275,19 +277,24 @@
 	GO
 
 	CREATE TABLE giam_gia_san_pham (
-		id_giam_gia_san_pham INT IDENTITY PRIMARY KEY,
-		ma_giam_gia_san_pham NVARCHAR(50),
-		id_dot_giam_gia INT,
-		id_san_pham INT,
-		trang_thai BIT DEFAULT 1,
-		FOREIGN KEY (id_dot_giam_gia) REFERENCES dot_giam_gia(id_dot_giam_gia),
-		FOREIGN KEY (id_san_pham) REFERENCES san_pham(id_san_pham)
-	);
+    id_giam_gia_san_pham INT IDENTITY PRIMARY KEY,
+
+    ma_giam_gia_san_pham NVARCHAR(50),
+
+    id_dot_giam_gia INT,
+    id_spct INT,
+
+    trang_thai BIT DEFAULT 1,
+
+    FOREIGN KEY (id_dot_giam_gia) REFERENCES dot_giam_gia(id_dot_giam_gia),
+    FOREIGN KEY (id_spct) REFERENCES san_pham_chi_tiet(id_spct),
+
+    CONSTRAINT unique_discount_spct
+    UNIQUE (id_dot_giam_gia, id_spct)
+);
 	GO
-	ALTER TABLE giam_gia_san_pham
-	ADD CONSTRAINT unique_discount_product
-	UNIQUE (id_dot_giam_gia, id_san_pham);
-		CREATE TABLE pt_thanh_toan (
+
+	CREATE TABLE pt_thanh_toan (
 		id_pttt INT IDENTITY PRIMARY KEY,
 		ma_pt_thanh_toan NVARCHAR(50),
 		ten_pttt NVARCHAR(100),
@@ -295,49 +302,60 @@
 	);
 	GO
 
-	DROP TABLE IF EXISTS hoa_don;
-	GO
+CREATE TABLE hoa_don (
+    id_hoa_don INT IDENTITY PRIMARY KEY,
+    ma_hoa_don NVARCHAR(50) UNIQUE,
 
+    id_nguoi_dung INT NOT NULL,
+    id_ma_giam_gia INT NULL,
+    id_pttt INT NULL,
+    loai_don_hang NVARCHAR(20) DEFAULT 'ONLINE',
 
-	CREATE TABLE hoa_don (
-		id_hoa_don INT IDENTITY PRIMARY KEY,
-		ma_hoa_don NVARCHAR(50) UNIQUE,
+    ten_nguoi_nhan NVARCHAR(150) NOT NULL,
+    so_dien_thoai NVARCHAR(20) NOT NULL,
+    tinh NVARCHAR(100),
+    huyen NVARCHAR(100),
+    xa NVARCHAR(100),
+    dia_chi_chi_tiet NVARCHAR(255),
 
-		id_nguoi_dung INT NOT NULL,
-		id_ma_giam_gia INT NULL,
-		id_pttt INT NULL,
-		loai_don_hang NVARCHAR(20) DEFAULT 'ONLINE',
+    tong_tien_hang DECIMAL(18,2) DEFAULT 0,
+    tien_giam DECIMAL(18,2) DEFAULT 0,
+    phi_van_chuyen DECIMAL(18,2) DEFAULT 0,
+    tong_thanh_toan DECIMAL(18,2) DEFAULT 0,
 
-		ten_nguoi_nhan NVARCHAR(150) NOT NULL,
-		so_dien_thoai NVARCHAR(20) NOT NULL,
-		tinh NVARCHAR(100),
-		huyen NVARCHAR(100),
-		xa NVARCHAR(100),
-		dia_chi_chi_tiet NVARCHAR(255),
+    trang_thai_don NVARCHAR(30) DEFAULT 'CHO_XAC_NHAN',
 
-		tong_tien_hang DECIMAL(18,2) DEFAULT 0,
-		tien_giam DECIMAL(18,2) DEFAULT 0,
-		phi_van_chuyen DECIMAL(18,2) DEFAULT 0,
-		tong_thanh_toan DECIMAL(18,2) DEFAULT 0,
+    hoan_tra DATETIME NULL,
 
-		trang_thai_don NVARCHAR(30)
-		CHECK (trang_thai_don IN 
-		('CHO_XAC_NHAN','DA_XAC_NHAN','DANG_GIAO','DA_GIAO','DA_HUY','HOAN_TRA'))
-		DEFAULT 'CHO_XAC_NHAN',
+    ghi_chu NVARCHAR(255),
 
-		ghi_chu NVARCHAR(255),
+    ngay_tao DATETIME DEFAULT GETDATE(),
+    ngay_cap_nhat DATETIME DEFAULT GETDATE(),
 
-		ngay_tao DATETIME DEFAULT GETDATE(),
-		ngay_cap_nhat DATETIME DEFAULT GETDATE(),
+    FOREIGN KEY (id_nguoi_dung) REFERENCES nguoi_dung(id_nguoi_dung),
+    FOREIGN KEY (id_ma_giam_gia) REFERENCES ma_giam_gia(id_ma_giam_gia),
+    FOREIGN KEY (id_pttt) REFERENCES pt_thanh_toan(id_pttt)
+);
+GO
 
-		FOREIGN KEY (id_nguoi_dung) REFERENCES nguoi_dung(id_nguoi_dung),
-		FOREIGN KEY (id_ma_giam_gia) REFERENCES ma_giam_gia(id_ma_giam_gia),
-		FOREIGN KEY (id_pttt) REFERENCES pt_thanh_toan(id_pttt)
-	);
-	GO
-	ALTER TABLE hoa_don
-ADD loai_don_hang NVARCHAR(20) DEFAULT 'ONLINE' 
-CHECK (loai_don_hang IN ('ONLINE', 'TAI_QUAY'));
+ALTER TABLE hoa_don
+ADD CONSTRAINT chk_loai_don_hang
+CHECK (loai_don_hang IN ('ONLINE','TAI_QUAY'));
+GO
+
+ALTER TABLE hoa_don
+ADD CONSTRAINT chk_trang_thai_don
+CHECK (trang_thai_don IN 
+(
+    'CHO_XAC_NHAN',
+    'DA_XAC_NHAN',
+    'CHO_THANH_TOAN',
+    'DA_THANH_TOAN',
+    'DANG_GIAO',
+    'DA_GIAO',
+    'DA_HUY',
+    'HOAN_TRA'
+));
 GO
 	CREATE TABLE hoa_don_chi_tiet (
 		id_hdct INT IDENTITY PRIMARY KEY,
@@ -377,6 +395,8 @@ GO
 		so_tien DECIMAL(18,2),
 		trang_thai_thanh_toan NVARCHAR(30)
 		CHECK (trang_thai_thanh_toan IN ('CHO_THANH_TOAN','DA_THANH_TOAN','THAT_BAI')),
+		vnp_TransactionNo NVARCHAR(50) NULL,
+		vnp_PayDate NVARCHAR(14) NULL,
 		ngay_thanh_toan DATETIME DEFAULT GETDATE(),
 		FOREIGN KEY (id_hoa_don) REFERENCES hoa_don(id_hoa_don),
 		FOREIGN KEY (id_pttt) REFERENCES pt_thanh_toan(id_pttt)
@@ -445,25 +465,53 @@ GO
 	);
 	GO
 
-	CREATE TABLE lich_su_hoa_don (
-		id_ls_hd INT IDENTITY PRIMARY KEY,
-		ma_lich_su_hoa_don NVARCHAR(50),
-		id_hoa_don INT,
-		trang_thai NVARCHAR(30),
-		ghi_chu NVARCHAR(255),
-		ngay_cap_nhat DATETIME DEFAULT GETDATE(),
-		FOREIGN KEY (id_hoa_don) REFERENCES hoa_don(id_hoa_don)
-	);
-	GO
+DROP TABLE IF EXISTS lich_su_hoa_don;
+GO
+
+CREATE TABLE lich_su_hoa_don (
+    id_ls_hd INT IDENTITY PRIMARY KEY,
+
+    ma_lich_su NVARCHAR(50) UNIQUE,
+
+    id_hoa_don INT NOT NULL,
+
+    trang_thai_cu NVARCHAR(30),
+    trang_thai_moi NVARCHAR(30),
+
+    loai_hanh_dong NVARCHAR(50), -- UPDATE_STATUS, CREATE, CANCEL...
+    hanh_dong NVARCHAR(255),
+
+    id_nguoi_thuc_hien INT NULL, -- admin/staff/user
+
+    thoi_gian DATETIME DEFAULT GETDATE(),
+
+    FOREIGN KEY (id_hoa_don) REFERENCES hoa_don(id_hoa_don),
+    FOREIGN KEY (id_nguoi_thuc_hien) REFERENCES nguoi_dung(id_nguoi_dung)
+);
+GO
 
 	CREATE TABLE doi_tra (
 		id_doi_tra INT IDENTITY PRIMARY KEY,
 		ma_doi_tra NVARCHAR(50),
 		id_hoa_don INT,
 		ly_do NVARCHAR(255),
-		trang_thai NVARCHAR(30),
+		danh_sach_anh NVARCHAR(MAX) NULL,
+		tong_tien_hoan DECIMAL(18,2) DEFAULT 0,
+		trang_thai NVARCHAR(30)
+		CHECK (trang_thai IN ('CHO_XAC_NHAN_HOAN','CHO_GIAO_HANG','DA_NHAN_HANG_KIEM_TRA','HOAN_THANH','TU_CHOI')),
 		ngay_yeu_cau DATETIME DEFAULT GETDATE(),
 		FOREIGN KEY (id_hoa_don) REFERENCES hoa_don(id_hoa_don)
+	);
+	GO
+
+	CREATE TABLE doi_tra_chi_tiet (
+		id_doi_tra_ct INT IDENTITY PRIMARY KEY,
+		id_doi_tra INT NOT NULL,
+		id_hdct INT NOT NULL,
+		so_luong_tra INT NOT NULL CHECK (so_luong_tra > 0),
+		gia_tri_hoan DECIMAL(18,2) NOT NULL,
+		FOREIGN KEY (id_doi_tra) REFERENCES doi_tra(id_doi_tra),
+		FOREIGN KEY (id_hdct) REFERENCES hoa_don_chi_tiet(id_hdct)
 	);
 	GO
 
@@ -757,6 +805,130 @@ GO
 	END
 GO
 
+DROP TRIGGER IF EXISTS trg_validate_trang_thai;
+GO
+
+CREATE TRIGGER trg_validate_trang_thai
+ON hoa_don
+AFTER UPDATE
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    IF NOT UPDATE(trang_thai_don)
+        RETURN;
+
+    IF EXISTS (
+        SELECT 1
+        FROM inserted i
+        JOIN deleted d ON i.id_hoa_don = d.id_hoa_don
+        WHERE
+
+        -- 1. CHO_XAC_NHAN → chỉ được sang DA_XAC_NHAN hoặc DA_HUY
+        (d.trang_thai_don = 'CHO_XAC_NHAN' 
+         AND i.trang_thai_don NOT IN ('DA_XAC_NHAN','DA_HUY'))
+
+        OR
+
+        -- 2. DA_XAC_NHAN → CHO_THANH_TOAN hoặc DA_HUY
+        (d.trang_thai_don = 'DA_XAC_NHAN' 
+         AND i.trang_thai_don NOT IN ('CHO_THANH_TOAN','DA_HUY'))
+
+        OR
+
+        -- 3. CHO_THANH_TOAN → DA_THANH_TOAN hoặc DA_HUY
+        (d.trang_thai_don = 'CHO_THANH_TOAN' 
+         AND i.trang_thai_don NOT IN ('DA_THANH_TOAN','DA_HUY'))
+
+        OR
+
+        -- 4. DA_THANH_TOAN → DANG_GIAO hoặc DA_HUY
+        (d.trang_thai_don = 'DA_THANH_TOAN' 
+         AND i.trang_thai_don NOT IN ('DANG_GIAO','DA_HUY'))
+
+        OR
+
+        -- 5. DANG_GIAO → DA_GIAO (KHÔNG cho hủy nữa)
+        (d.trang_thai_don = 'DANG_GIAO' 
+         AND i.trang_thai_don <> 'DA_GIAO')
+
+        OR
+
+        -- 6. DA_GIAO → chỉ cho HOAN_TRA
+        (d.trang_thai_don = 'DA_GIAO' 
+		AND i.trang_thai_don NOT IN ('DA_GIAO','HOAN_TRA'))
+
+        OR
+
+        -- 7. DA_HUY → KHÔNG được update nữa
+        (d.trang_thai_don = 'DA_HUY')
+
+        OR
+
+        -- 8. HOAN_TRA → KHÔNG update nữa
+        (d.trang_thai_don = 'HOAN_TRA')
+    )
+    BEGIN
+        RAISERROR(N'Cập nhật trạng thái không hợp lệ theo quy trình',16,1);
+        ROLLBACK TRANSACTION;
+    END
+END
+GO
+
+DROP TRIGGER IF EXISTS trg_log_hoa_don;
+GO
+
+CREATE TRIGGER trg_log_hoa_don
+ON hoa_don
+AFTER UPDATE
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    IF NOT UPDATE(trang_thai_don)
+        RETURN;
+
+    DECLARE @user_id INT;
+    SET @user_id = CAST(SESSION_CONTEXT(N'user_id') AS INT);
+
+    INSERT INTO lich_su_hoa_don
+    (
+        ma_lich_su,
+        id_hoa_don,
+        trang_thai_cu,
+        trang_thai_moi,
+        loai_hanh_dong,
+        hanh_dong,
+        id_nguoi_thuc_hien
+    )
+    SELECT 
+        CONCAT('LSHD_', NEWID()),
+        i.id_hoa_don,
+        d.trang_thai_don,
+        i.trang_thai_don,
+        'UPDATE_STATUS',
+        N'Trạng thái: ' + d.trang_thai_don + N' → ' + i.trang_thai_don,
+        @user_id
+    FROM inserted i
+    JOIN deleted d 
+        ON i.id_hoa_don = d.id_hoa_don
+    WHERE i.trang_thai_don <> d.trang_thai_don;
+END
+GO
+
+--dam bao thu tu trigger validate chay truoc trigger log theo sau
+EXEC sp_settriggerorder 
+    @triggername = 'trg_validate_trang_thai',
+    @order = 'FIRST',
+    @stmttype = 'UPDATE';
+GO
+
+EXEC sp_settriggerorder 
+    @triggername = 'trg_log_hoa_don',
+    @order = 'LAST',
+    @stmttype = 'UPDATE';
+GO
+
 INSERT INTO vai_tro (ma_vai_tro, ten_vai_tro)
 VALUES 
 ('ADMIN','Quản trị viên'),
@@ -789,20 +961,18 @@ INSERT INTO chat_lieu VALUES ('COTTON',N'Cotton',1);
 GO
 
 INSERT INTO san_pham
-(id_danh_muc,id_thuong_hieu,ma_san_pham,ten_san_pham,gia_goc)
+(id_danh_muc,id_thuong_hieu,id_chat_lieu,ma_san_pham,ten_san_pham,gia_goc)
 VALUES
-(1,1,'SP001',N'Áo Nike',200000),
-(2,2,'SP002',N'Quần Adidas',180000);
-GO
+(1,1,1,'SP001',N'Áo Nike',200000),
+(2,2,1,'SP002',N'Quần Adidas',180000);
 
 INSERT INTO san_pham_chi_tiet
-(id_san_pham,id_kich_thuoc,id_mau_sac,id_chat_lieu,id_thuong_hieu,
+(id_san_pham,id_kich_thuoc,id_mau_sac,id_thuong_hieu,
 ma_san_pham_chi_tiet,so_luong,gia_ban)
 VALUES
-(1,1,1,1,1,'SPCT001',10,250000),
-(1,2,2,1,1,'SPCT002',8,260000),
-(2,1,1,1,2,'SPCT003',15,200000);
-GO
+(1,1,1,1,'SPCT001',10,250000),
+(1,2,2,1,'SPCT002',8,260000),
+(2,1,1,2,'SPCT003',15,200000);
 
 INSERT INTO gio_hang(ma_gio_hang,id_nguoi_dung)
 VALUES
@@ -830,13 +1000,36 @@ VALUES
 GO
 
 UPDATE hoa_don
-SET trang_thai_don = 'DA_XAC_NHAN'
+SET trang_thai_don = 'DA_GIAO'
 WHERE id_hoa_don = 1;
 GO
 
-UPDATE hoa_don
-SET trang_thai_don = 'DA_HUY'
-WHERE id_hoa_don = 1;
+-- Tạo thêm HD002 giao thành công để test dữ liệu bảng doi_tra cho Admin
+INSERT INTO hoa_don
+(ma_hoa_don,id_nguoi_dung,ten_nguoi_nhan,so_dien_thoai,trang_thai_don,loai_don_hang)
+VALUES
+('HD002',3,N'Trần Văn C','0912345678','DA_GIAO','ONLINE');
+GO
+
+INSERT INTO hoa_don_chi_tiet
+(ma_hoa_don_chi_tiet,id_hoa_don,id_spct,ten_san_pham,don_gia,so_luong,thanh_tien)
+VALUES
+('HDCT002',2,3,N'Quần Adidas',200000,2,400000);
+GO
+
+-- Cập nhật tổng tiền cho HD002 để khớp với chi tiết
+UPDATE hoa_don SET tong_tien_hang=400000, tong_thanh_toan=400000 WHERE id_hoa_don=2;
+GO
+
+-- Tạo 1 request Đổi trả đang chờ xác nhận cho HD002
+INSERT INTO doi_tra (ma_doi_tra, id_hoa_don, ly_do, danh_sach_anh, tong_tien_hoan, trang_thai)
+VALUES
+('DT-TEST-001', 2, N'Sản phẩm bị lỗi đường chỉ', '["https://placehold.co/600x400/png?text=LoiSanPham"]', 200000, 'CHO_XAC_NHAN_HOAN');
+GO
+
+INSERT INTO doi_tra_chi_tiet (id_doi_tra, id_hdct, so_luong_tra, gia_tri_hoan)
+VALUES
+(1, 2, 1, 200000);
 GO
 
 
@@ -863,11 +1056,7 @@ DROP INDEX IF EXISTS idx_unique_active_cart ON gio_hang;
 GO
 
 -- 2. Thêm loại giỏ hàng để phân biệt: Khách online tự thêm hay Thu ngân tạo Hóa đơn chờ
-ALTER TABLE gio_hang
-ADD loai_gio_hang NVARCHAR(20) DEFAULT 'ONLINE' CHECK (loai_gio_hang IN ('ONLINE', 'TAI_QUAY'));
-GO
+-- co trong table r
 
 -- 3. (Tùy chọn) Thêm tên để thu ngân dễ nhìn (Ví dụ: "Đơn chờ bàn 1", "Khách VIP")
-ALTER TABLE gio_hang
-ADD ten_gio_hang NVARCHAR(100);
-GO
+-- bi lap nen xoa di
