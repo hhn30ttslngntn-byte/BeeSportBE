@@ -250,10 +250,12 @@ public class AdminController {
     // --- Đổi Trả ---
     @PostMapping("/doi-tra/request-by-admin")
     public ResponseEntity<?> createDoiTraByAdmin(
-            @RequestPart("data") com.example.sport_be.dto.DoiTraRequest request,
-            @RequestPart("files") MultipartFile[] files
+            @RequestPart("data") String dataJson,
+            @RequestPart(value = "files", required = false) MultipartFile[] files
     ) {
         try {
+            com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+            com.example.sport_be.dto.DoiTraRequest request = mapper.readValue(dataJson, com.example.sport_be.dto.DoiTraRequest.class);
             String baseUrl = httpServletRequest.getScheme() + "://" + httpServletRequest.getServerName() + ":" + httpServletRequest.getServerPort();
             return ResponseEntity.ok(adminService.createDoiTraByAdmin(request, files, baseUrl));
         } catch (Exception e) {

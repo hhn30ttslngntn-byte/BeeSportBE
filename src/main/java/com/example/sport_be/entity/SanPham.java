@@ -41,7 +41,6 @@ public class SanPham {
     private List<HinhAnhSanPham> hinhAnhs;
 
     @OneToMany(mappedBy = "sanPham")
-    @JsonIgnore
     private List<SanPhamChiTiet> details;
 
     @Transient

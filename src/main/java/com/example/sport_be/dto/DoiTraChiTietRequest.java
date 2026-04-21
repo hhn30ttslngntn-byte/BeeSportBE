@@ -8,4 +8,5 @@ import lombok.Setter;
 public class DoiTraChiTietRequest {
     private Integer hoaDonChiTietId; // id_hdct
     private Integer soLuongTra;
+    private Integer idSpctMoi; // id_spct mới khách muốn đổi (nếu có)
 }

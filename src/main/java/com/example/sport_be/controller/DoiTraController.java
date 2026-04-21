@@ -64,18 +64,64 @@ public class DoiTraController {
         }
     }
 
-    // 4. Quyết định -> HOAN_THANH hoặc TU_CHOI
-    // Body: { "action": "HOAN_TIEN" } hoặc { "action": "TU_CHOI" }
-    @PutMapping("/{id}/quyet-dinh")
-    public ResponseEntity<?> quyetDinh(@PathVariable Integer id, @RequestBody Map<String, String> body) {
+    // 5. Hủy yêu cầu
+    @PutMapping("/{id}/huy")
+    public ResponseEntity<?> huyYeuCau(@PathVariable Integer id, @RequestBody Map<String, String> body) {
         try {
-            String action = body.get("action");
-            if (action == null || action.isBlank()) {
-                return ResponseEntity.badRequest().body(Map.of("error", "Thiếu trường 'action'. Chỉ chấp nhận: HOAN_TIEN hoặc TU_CHOI"));
-            }
-            return ResponseEntity.ok(doiTraService.quyetDinh(id, action));
+            String ghiChu = body.get("ghiChu");
+            return ResponseEntity.ok(doiTraService.huyYeuCau(id, ghiChu));
         } catch (Exception e) {
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
         }
+    }
+
+    // 6. Xác nhận đã thanh toán/hoàn tiền thủ công
+    @PutMapping("/{id}/xac-nhan-thanh-toan")
+    public ResponseEntity<?> xacNhanThanhToan(@PathVariable Integer id) {
+        try {
+            return ResponseEntity.ok(doiTraService.xacNhanThanhToan(id));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    // 4. Quyết định -> HOAN_THANH hoặc TU_CHOI
+    // Body: { "action": "HOAN_THANH", "chiTietKiemKho": { "id_dtct": true/false }, "ghiChuAdmin": "..." }
+    @PutMapping("/{id}/quyet-dinh")
+    public ResponseEntity<?> quyetDinh(@PathVariable Integer id, @RequestBody Map<String, Object> body) {
+        try {
+            String action = (String) body.get("action");
+            if (action == null || action.isBlank()) {
+                return ResponseEntity.badRequest().body(Map.of("error", "Thiếu trường 'action'. Chỉ chấp nhận: HOAN_THANH hoặc TU_CHOI"));
+            }
+            
+            // Ép kiểu chiTietKiemKho từ Map<String, Object> sang Map<Integer, Boolean>
+            Map<Integer, Boolean> chiTietKiemKho = new java.util.HashMap<>();
+            Object ktObj = body.get("chiTietKiemKho");
+            if (ktObj instanceof Map) {
+                Map<?, ?> rawMap = (Map<?, ?>) ktObj;
+                for (Map.Entry<?, ?> entry : rawMap.entrySet()) {
+                    chiTietKiemKho.put(Integer.valueOf(entry.getKey().toString()), Boolean.valueOf(entry.getValue().toString()));
+                }
+            }
+            
+            String ghiChuAdmin = (String) body.get("ghiChuAdmin");
+            
+            return ResponseEntity.ok(doiTraService.quyetDinh(id, action, chiTietKiemKho, ghiChuAdmin));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    // Lấy nhật ký theo hóa đơn
+    @GetMapping("/logs/hoa-don/{hoaDonId}")
+    public ResponseEntity<?> getLogsByHoaDon(@PathVariable Integer hoaDonId) {
+        return ResponseEntity.ok(doiTraService.getLogsByHoaDon(hoaDonId));
+    }
+
+    // Lấy nhật ký theo yêu cầu đổi trả
+    @GetMapping("/logs/doi-tra/{doiTraId}")
+    public ResponseEntity<?> getLogsByDoiTra(@PathVariable Integer doiTraId) {
+        return ResponseEntity.ok(doiTraService.getLogsByDoiTra(doiTraId));
     }
 }
