@@ -9,5 +9,6 @@ import java.util.List;
 public class DoiTraRequest {
     private Integer hoaDonId;
     private String lyDo;
+    private String loaiDoiTra; // REFUND hoặc EXCHANGE
     private List<DoiTraChiTietRequest> chiTiets;
 }

@@ -1,5 +1,6 @@
 package com.example.sport_be.entity;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
@@ -31,6 +32,7 @@ public class NguoiDung {
     @Column(name = "email", length = 150, unique = true)
     private String email;
 
+    @JsonIgnore
     @Column(name = "mat_khau")
     private String matKhau;
 

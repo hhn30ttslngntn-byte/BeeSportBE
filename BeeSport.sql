@@ -325,13 +325,11 @@ CREATE TABLE hoa_don (
 
     trang_thai_don NVARCHAR(30) DEFAULT 'CHO_XAC_NHAN',
 
-    hoan_tra DATETIME NULL,
-
     ghi_chu NVARCHAR(255),
 
     ngay_tao DATETIME DEFAULT GETDATE(),
     ngay_cap_nhat DATETIME DEFAULT GETDATE(),
-
+	ngay_giao DATETIME,
     FOREIGN KEY (id_nguoi_dung) REFERENCES nguoi_dung(id_nguoi_dung),
     FOREIGN KEY (id_ma_giam_gia) REFERENCES ma_giam_gia(id_ma_giam_gia),
     FOREIGN KEY (id_pttt) REFERENCES pt_thanh_toan(id_pttt)
@@ -349,14 +347,13 @@ CHECK (trang_thai_don IN
 (
     'CHO_XAC_NHAN',
     'DA_XAC_NHAN',
-    'CHO_THANH_TOAN',
-    'DA_THANH_TOAN',
     'DANG_GIAO',
     'DA_GIAO',
     'DA_HUY',
-    'HOAN_TRA'
+    'HOAN_TRA',
+    'YEU_CAU_TRA_HANG',
+    'HOAN_TRA_MOT_PHAN'
 ));
-GO
 	CREATE TABLE hoa_don_chi_tiet (
 		id_hdct INT IDENTITY PRIMARY KEY,
 		ma_hoa_don_chi_tiet NVARCHAR(50) UNIQUE,
@@ -376,7 +373,7 @@ GO
 		thanh_tien DECIMAL(18,2) NOT NULL,
 
 		ngay_tao DATETIME DEFAULT GETDATE(),
-
+		da_doi_tra BIT DEFAULT 0,
 		FOREIGN KEY (id_hoa_don) REFERENCES hoa_don(id_hoa_don),
 		FOREIGN KEY (id_spct) REFERENCES san_pham_chi_tiet(id_spct)
 	);
@@ -393,10 +390,10 @@ GO
 		id_hoa_don INT,
 		id_pttt INT,
 		so_tien DECIMAL(18,2),
+		loai_giao_dich NVARCHAR(20),
 		trang_thai_thanh_toan NVARCHAR(30)
 		CHECK (trang_thai_thanh_toan IN ('CHO_THANH_TOAN','DA_THANH_TOAN','THAT_BAI')),
-		vnp_TransactionNo NVARCHAR(50) NULL,
-		vnp_PayDate NVARCHAR(14) NULL,
+		CHECK (loai_giao_dich IN ('THANH_TOAN','HOAN_TIEN')),
 		ngay_thanh_toan DATETIME DEFAULT GETDATE(),
 		FOREIGN KEY (id_hoa_don) REFERENCES hoa_don(id_hoa_don),
 		FOREIGN KEY (id_pttt) REFERENCES pt_thanh_toan(id_pttt)
@@ -490,18 +487,32 @@ CREATE TABLE lich_su_hoa_don (
 );
 GO
 
-	CREATE TABLE doi_tra (
+CREATE TABLE doi_tra (
 		id_doi_tra INT IDENTITY PRIMARY KEY,
 		ma_doi_tra NVARCHAR(50),
 		id_hoa_don INT,
+		loai_doi_tra NVARCHAR(20),
 		ly_do NVARCHAR(255),
+		ly_do_tu_choi NVARCHAR(255),
+		tinh_trang_hang NVARCHAR(20),
 		danh_sach_anh NVARCHAR(MAX) NULL,
 		tong_tien_hoan DECIMAL(18,2) DEFAULT 0,
+		tien_chenh_lech DECIMAL(18,2) DEFAULT 0,
+		phi_ship_hoan DECIMAL(18,2) DEFAULT 0,
+		ghi_chu_admin NVARCHAR(500),
+		trang_thai_thanh_toan NVARCHAR(30),
+		ngay_xu_ly DATETIME,
 		trang_thai NVARCHAR(30)
-		CHECK (trang_thai IN ('CHO_XAC_NHAN_HOAN','CHO_GIAO_HANG','DA_NHAN_HANG_KIEM_TRA','HOAN_THANH','TU_CHOI')),
+		CHECK (trang_thai IN ('CHO_XAC_NHAN_HOAN','CHO_GIAO_HANG','DA_NHAN_HANG_KIEM_TRA','HOAN_THANH','TU_CHOI','CANCELLED')),
+		CHECK (loai_doi_tra IN ('REFUND','EXCHANGE')),
+		CHECK (tinh_trang_hang IN ('NGUYEN_VEN','LOI','DA_SU_DUNG')),
 		ngay_yeu_cau DATETIME DEFAULT GETDATE(),
 		FOREIGN KEY (id_hoa_don) REFERENCES hoa_don(id_hoa_don)
 	);
+	GO
+	ALTER TABLE doi_tra
+	ADD CONSTRAINT chk_tien_hoan_max
+	CHECK (tong_tien_hoan >= 0);
 	GO
 
 	CREATE TABLE doi_tra_chi_tiet (
@@ -514,51 +525,31 @@ GO
 		FOREIGN KEY (id_hdct) REFERENCES hoa_don_chi_tiet(id_hdct)
 	);
 	GO
+	ALTER TABLE doi_tra_chi_tiet
+	ADD CONSTRAINT chk_gia_tri_hoan_positive CHECK (gia_tri_hoan >= 0);
+	GO
 
+CREATE INDEX idx_review_product ON danh_gia_san_pham(id_san_pham);
 
-CREATE INDEX idx_spct_sanpham 
-ON san_pham_chi_tiet(id_san_pham);
-GO
+CREATE INDEX idx_hoadon_user ON hoa_don(id_nguoi_dung);
+CREATE INDEX idx_hoadon_ngay ON hoa_don(ngay_tao);
+CREATE INDEX idx_hoadon_trangthai ON hoa_don(trang_thai_don);
+CREATE INDEX idx_hoadon_user_trangthai ON hoa_don(id_nguoi_dung, trang_thai_don);
 
-CREATE INDEX idx_giohang_user 
-ON gio_hang(id_nguoi_dung);
-GO
+CREATE INDEX idx_hdct_hoa_don ON hoa_don_chi_tiet(id_hoa_don);
+CREATE INDEX idx_hdct_spct ON hoa_don_chi_tiet(id_spct);
 
-CREATE INDEX idx_hoadon_user 
-ON hoa_don(id_nguoi_dung);
-GO
+CREATE INDEX idx_doi_tra_hoa_don ON doi_tra(id_hoa_don);
+CREATE INDEX idx_doi_tra_trang_thai ON doi_tra(trang_thai);
+CREATE INDEX idx_dtct_doi_tra ON doi_tra_chi_tiet(id_doi_tra);
 
-CREATE INDEX idx_diachinguoidung
-ON dia_chi_van_chuyen(id_nguoi_dung);
-GO
+CREATE INDEX idx_giohang_user ON gio_hang(id_nguoi_dung);
+CREATE INDEX idx_ghct_spct ON gio_hang_chi_tiet(id_spct);
+CREATE INDEX idx_ghct_giohang_spct ON gio_hang_chi_tiet(id_gio_hang, id_spct);
 
-CREATE INDEX idx_review_product
-ON danh_gia_san_pham(id_san_pham);
-GO
+CREATE INDEX idx_lstt_hoa_don ON lich_su_thanh_toan(id_hoa_don);
+CREATE INDEX idx_lshd_hoa_don ON lich_su_hoa_don(id_hoa_don);
 
-CREATE INDEX idx_wishlist_user
-ON san_pham_yeu_thich(id_nguoi_dung);
-GO
-
-CREATE INDEX idx_hoadon_trangthai
-ON hoa_don(trang_thai_don);
-GO
-
-CREATE INDEX idx_hoadon_ngay
-ON hoa_don(ngay_tao);
-GO
-
-CREATE INDEX idx_ghct_spct
-ON gio_hang_chi_tiet(id_spct);
-GO
-
-CREATE INDEX idx_ghct_giohang_spct
-ON gio_hang_chi_tiet(id_gio_hang, id_spct);
-GO
-
-CREATE INDEX idx_hdct_spct
-ON hoa_don_chi_tiet(id_spct);
-GO
 
 
 DROP TRIGGER IF EXISTS trg_cart_insert;
@@ -805,6 +796,8 @@ GO
 	END
 GO
 
+
+
 DROP TRIGGER IF EXISTS trg_validate_trang_thai;
 GO
 
@@ -814,59 +807,18 @@ AFTER UPDATE
 AS
 BEGIN
     SET NOCOUNT ON;
-
-    IF NOT UPDATE(trang_thai_don)
-        RETURN;
+    IF NOT UPDATE(trang_thai_don) RETURN;
 
     IF EXISTS (
         SELECT 1
         FROM inserted i
         JOIN deleted d ON i.id_hoa_don = d.id_hoa_don
         WHERE
-
-        -- 1. CHO_XAC_NHAN → chỉ được sang DA_XAC_NHAN hoặc DA_HUY
-        (d.trang_thai_don = 'CHO_XAC_NHAN' 
-         AND i.trang_thai_don NOT IN ('DA_XAC_NHAN','DA_HUY'))
-
-        OR
-
-        -- 2. DA_XAC_NHAN → CHO_THANH_TOAN hoặc DA_HUY
-        (d.trang_thai_don = 'DA_XAC_NHAN' 
-         AND i.trang_thai_don NOT IN ('CHO_THANH_TOAN','DA_HUY'))
-
-        OR
-
-        -- 3. CHO_THANH_TOAN → DA_THANH_TOAN hoặc DA_HUY
-        (d.trang_thai_don = 'CHO_THANH_TOAN' 
-         AND i.trang_thai_don NOT IN ('DA_THANH_TOAN','DA_HUY'))
-
-        OR
-
-        -- 4. DA_THANH_TOAN → DANG_GIAO hoặc DA_HUY
-        (d.trang_thai_don = 'DA_THANH_TOAN' 
-         AND i.trang_thai_don NOT IN ('DANG_GIAO','DA_HUY'))
-
-        OR
-
-        -- 5. DANG_GIAO → DA_GIAO (KHÔNG cho hủy nữa)
-        (d.trang_thai_don = 'DANG_GIAO' 
-         AND i.trang_thai_don <> 'DA_GIAO')
-
-        OR
-
-        -- 6. DA_GIAO → chỉ cho HOAN_TRA
-        (d.trang_thai_don = 'DA_GIAO' 
-		AND i.trang_thai_don NOT IN ('DA_GIAO','HOAN_TRA'))
-
-        OR
-
-        -- 7. DA_HUY → KHÔNG được update nữa
-        (d.trang_thai_don = 'DA_HUY')
-
-        OR
-
-        -- 8. HOAN_TRA → KHÔNG update nữa
-        (d.trang_thai_don = 'HOAN_TRA')
+        (d.trang_thai_don = 'CHO_XAC_NHAN' AND i.trang_thai_don NOT IN ('DA_XAC_NHAN','DA_HUY'))
+        OR (d.trang_thai_don = 'DA_XAC_NHAN' AND i.trang_thai_don NOT IN ('DANG_GIAO','DA_HUY'))
+        OR (d.trang_thai_don = 'DANG_GIAO' AND i.trang_thai_don NOT IN ('DA_GIAO','DA_HUY'))
+        OR (d.trang_thai_don = 'DA_GIAO' AND i.trang_thai_don NOT IN ('HOAN_TRA', 'DA_GIAO', 'YEU_CAU_TRA_HANG', 'HOAN_TRA_MOT_PHAN'))
+        OR (d.trang_thai_don = 'YEU_CAU_TRA_HANG' AND i.trang_thai_don NOT IN ('HOAN_TRA', 'HOAN_TRA_MOT_PHAN', 'DA_GIAO'))
     )
     BEGIN
         RAISERROR(N'Cập nhật trạng thái không hợp lệ theo quy trình',16,1);
@@ -890,6 +842,7 @@ BEGIN
 
     DECLARE @user_id INT;
     SET @user_id = CAST(SESSION_CONTEXT(N'user_id') AS INT);
+    IF @user_id IS NULL SET @user_id = 1; -- Mặc định là Admin ND001
 
     INSERT INTO lich_su_hoa_don
     (
@@ -928,6 +881,312 @@ EXEC sp_settriggerorder
     @order = 'LAST',
     @stmttype = 'UPDATE';
 GO
+
+DROP TRIGGER IF EXISTS trg_set_ngay_giao;
+GO
+
+CREATE TRIGGER trg_set_ngay_giao
+ON hoa_don
+AFTER UPDATE
+AS
+BEGIN
+    IF UPDATE(trang_thai_don)
+    BEGIN
+        UPDATE hoa_don
+        SET ngay_giao = GETDATE()
+        WHERE id_hoa_don IN (
+            SELECT id_hoa_don
+            FROM inserted
+            WHERE trang_thai_don = 'DA_GIAO'
+			AND ngay_giao IS NULL
+        )
+    END
+END
+GO
+
+
+DROP TRIGGER IF EXISTS trg_check_so_luong_tra;
+GO
+
+CREATE TRIGGER trg_check_so_luong_tra
+ON doi_tra_chi_tiet
+INSTEAD OF INSERT
+AS
+BEGIN
+    SET NOCOUNT ON;
+    SET XACT_ABORT ON;
+
+    ----------------------------------
+    -- 1. CHECK: trạng thái đơn hàng (Cho phép tạo thêm khi đang xử lý hoặc đã hoàn trả 1 phần)
+    ----------------------------------
+    IF EXISTS (
+        SELECT 1
+        FROM inserted i
+        JOIN doi_tra dt ON i.id_doi_tra = dt.id_doi_tra
+        JOIN hoa_don hd ON dt.id_hoa_don = hd.id_hoa_don
+        WHERE hd.trang_thai_don NOT IN ('DA_GIAO', 'YEU_CAU_TRA_HANG', 'HOAN_TRA_MOT_PHAN')
+    )
+    BEGIN
+        RAISERROR(N'Trạng thái đơn hàng không hỗ trợ tạo yêu cầu đổi trả',16,1);
+        ROLLBACK; RETURN;
+    END
+
+    ----------------------------------
+    -- 2. CHECK: thời gian (FIX NULL ngay_giao)
+    ----------------------------------
+    IF EXISTS (
+        SELECT 1
+        FROM inserted i
+        JOIN doi_tra dt ON i.id_doi_tra = dt.id_doi_tra
+        JOIN hoa_don hd ON dt.id_hoa_don = hd.id_hoa_don
+        WHERE 
+            (hd.loai_don_hang = 'ONLINE'
+                AND (hd.ngay_giao IS NULL OR DATEDIFF(DAY, hd.ngay_giao, GETDATE()) > 7))
+            OR
+            (hd.loai_don_hang = 'TAI_QUAY'
+                AND DATEDIFF(DAY, hd.ngay_tao, GETDATE()) > 3)
+    )
+    BEGIN
+        RAISERROR(N'Quá thời gian đổi trả',16,1);
+        ROLLBACK; RETURN;
+    END
+
+    ----------------------------------
+    -- 3. CHECK: loại đổi trả (Chấp nhận cả REFUND/EXCHANGE từ Java)
+    ----------------------------------
+    IF EXISTS (
+        SELECT 1
+        FROM inserted i
+        JOIN doi_tra dt ON i.id_doi_tra = dt.id_doi_tra
+        JOIN hoa_don hd ON dt.id_hoa_don = hd.id_hoa_don
+        WHERE
+        (hd.loai_don_hang = 'ONLINE' AND dt.loai_doi_tra NOT IN ('HOAN_TIEN', 'REFUND'))
+        OR
+        (hd.loai_don_hang = 'TAI_QUAY' AND dt.loai_doi_tra NOT IN ('DOI_HANG', 'EXCHANGE'))
+    )
+    BEGIN
+        RAISERROR(N'Loại đổi trả không hợp lệ',16,1);
+        ROLLBACK; RETURN;
+    END
+
+    ----------------------------------
+    -- 4. CHECK: tình trạng hàng
+    ----------------------------------
+    IF EXISTS (
+        SELECT 1
+        FROM inserted i
+        JOIN doi_tra dt ON i.id_doi_tra = dt.id_doi_tra
+        WHERE dt.tinh_trang_hang = 'DA_SU_DUNG'
+    )
+    BEGIN
+        RAISERROR(N'Hàng đã sử dụng không được đổi trả',16,1);
+        ROLLBACK; RETURN;
+    END
+
+    ----------------------------------
+    -- 5. CHECK: phải chọn sp mới khi đổi
+    ----------------------------------
+    IF EXISTS (
+        SELECT 1
+        FROM inserted i
+        JOIN doi_tra dt ON i.id_doi_tra = dt.id_doi_tra
+        WHERE dt.loai_doi_tra IN ('DOI_HANG', 'EXCHANGE')
+        AND i.id_spct_moi IS NULL
+    )
+    BEGIN
+        RAISERROR(N'Phải chọn sản phẩm đổi',16,1);
+        ROLLBACK; RETURN;
+    END
+
+    ----------------------------------
+    -- 6. CHECK: tồn kho (Sửa tham chiếu i.id_spct_moi)
+    ----------------------------------
+    IF EXISTS (
+        SELECT 1
+        FROM inserted i
+        JOIN doi_tra dt ON i.id_doi_tra = dt.id_doi_tra
+        JOIN san_pham_chi_tiet spct WITH (UPDLOCK, ROWLOCK)
+            ON i.id_spct_moi = spct.id_spct
+        WHERE dt.loai_doi_tra IN ('DOI_HANG', 'EXCHANGE')
+        AND spct.so_luong < i.so_luong_tra
+    )
+    BEGIN
+        RAISERROR(N'Sản phẩm đổi không đủ hàng',16,1);
+        ROLLBACK; RETURN;
+    END
+
+    ----------------------------------
+    -- 7. CHECK: đổi đúng sản phẩm (Sửa tham chiếu i.id_spct_moi)
+    ----------------------------------
+    IF EXISTS (
+        SELECT 1
+        FROM inserted i
+        JOIN doi_tra dt ON i.id_doi_tra = dt.id_doi_tra
+        JOIN hoa_don_chi_tiet hdct ON i.id_hdct = hdct.id_hdct
+        JOIN san_pham_chi_tiet spct_cu ON hdct.id_spct = spct_cu.id_spct
+        JOIN san_pham_chi_tiet spct_moi ON i.id_spct_moi = spct_moi.id_spct
+        WHERE 
+            dt.loai_doi_tra IN ('DOI_HANG', 'EXCHANGE')
+            AND spct_cu.id_san_pham <> spct_moi.id_san_pham
+    )
+    BEGIN
+        RAISERROR(N'Chỉ được đổi cùng loại sản phẩm',16,1);
+        ROLLBACK; RETURN;
+    END
+
+    ----------------------------------
+    -- 8. CHECK: không cho đổi nhiều lần trên cùng 1 chi tiết (Tùy chính sách, hiện tại cho phép nếu chưa hết SL)
+    ----------------------------------
+    -- IF EXISTS (SELECT 1 FROM inserted i JOIN hoa_don_chi_tiet hdct ON i.id_hdct = hdct.id_hdct WHERE hdct.da_doi_tra = 1)
+    -- BEGIN RAISERROR(N'Sản phẩm đã được đổi trả trước đó',16,1); ROLLBACK; RETURN; END
+
+    ----------------------------------
+    -- 9. CHECK: số lượng cộng dồn (Quan trọng nhất: chỉ tính yêu cầu hữu hiệu)
+    ----------------------------------
+    IF EXISTS (
+        SELECT 1
+        FROM inserted i
+        JOIN hoa_don_chi_tiet hdct ON i.id_hdct = hdct.id_hdct
+        LEFT JOIN (
+            SELECT dtct.id_hdct, SUM(dtct.so_luong_tra) tong_da_tra
+            FROM doi_tra_chi_tiet dtct
+            JOIN doi_tra dt_parent ON dtct.id_doi_tra = dt_parent.id_doi_tra
+            WHERE dt_parent.trang_thai NOT IN ('TU_CHOI', 'CANCELLED')
+            GROUP BY dtct.id_hdct
+        ) d ON d.id_hdct = i.id_hdct
+        WHERE ISNULL(d.tong_da_tra,0) + i.so_luong_tra > hdct.so_luong
+    )
+    BEGIN
+        RAISERROR(N'Tổng số lượng trả vượt quá số lượng đã mua',16,1);
+        ROLLBACK; RETURN;
+    END
+
+    ----------------------------------
+    -- 10. INSERT
+    ----------------------------------
+    INSERT INTO doi_tra_chi_tiet (
+        id_doi_tra,
+        id_hdct,
+        so_luong_tra,
+        gia_tri_hoan
+    )
+    SELECT 
+        i.id_doi_tra,
+        i.id_hdct,
+        i.so_luong_tra,
+        i.so_luong_tra * hdct.don_gia
+    FROM inserted i
+    JOIN hoa_don_chi_tiet hdct 
+        ON i.id_hdct = hdct.id_hdct;
+
+END
+GO
+
+DROP TRIGGER IF EXISTS trg_set_da_doi_tra;
+GO
+CREATE TRIGGER trg_set_da_doi_tra
+ON doi_tra
+AFTER UPDATE
+AS
+BEGIN
+    IF UPDATE(trang_thai)
+    BEGIN
+        UPDATE hdct
+        SET da_doi_tra = 1
+        FROM hoa_don_chi_tiet hdct
+        JOIN doi_tra_chi_tiet dtct 
+            ON dtct.id_hdct = hdct.id_hdct
+        JOIN inserted i 
+            ON dtct.id_doi_tra = i.id_doi_tra
+        JOIN deleted d 
+            ON d.id_doi_tra = i.id_doi_tra
+        WHERE i.trang_thai = 'HOAN_THANH'
+        AND d.trang_thai <> 'HOAN_THANH' -- 🔥 FIX CUỐI
+    END
+END
+GO
+
+-- VÔ HIỆU HÓA TRIGGER XỬ LÝ KHO ĐỔI TRẢ VÌ ĐÃ XỬ LÝ TRONG JAVA (Tránh double-counting và xử lý hàng lỗi)
+DROP TRIGGER IF EXISTS trg_hoan_kho_doi_tra;
+GO
+DROP TRIGGER IF EXISTS trg_tru_kho_doi_hang;
+GO
+
+DROP TRIGGER IF EXISTS trg_lock_doi_tra;
+GO
+
+CREATE TRIGGER trg_lock_doi_tra
+ON doi_tra
+AFTER UPDATE
+AS
+BEGIN
+    SET NOCOUNT ON;
+    -- Chỉ chặn nếu có sự thay đổi về trạng thái quy trình (trang_thai)
+    IF UPDATE(trang_thai)
+    BEGIN
+        IF EXISTS (
+            SELECT 1
+            FROM inserted i
+            JOIN deleted d ON i.id_doi_tra = d.id_doi_tra
+            WHERE d.trang_thai IN ('HOAN_THANH','TU_CHOI','CANCELLED')
+            AND i.trang_thai <> d.trang_thai
+        )
+        BEGIN
+            RAISERROR(N'Không thể thay đổi trạng thái quy trình của yêu cầu đã đóng',16,1);
+            ROLLBACK;
+            RETURN;
+        END
+    END
+END
+GO
+
+DROP TRIGGER IF EXISTS trg_log_tu_choi;
+GO
+
+CREATE TRIGGER trg_log_tu_choi
+ON doi_tra
+AFTER UPDATE
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    IF NOT UPDATE(trang_thai)
+        RETURN;
+
+    DECLARE @user_id INT;
+    SET @user_id = CAST(SESSION_CONTEXT(N'user_id') AS INT);
+    IF @user_id IS NULL SET @user_id = 1; -- Mặc định là Admin ND001
+
+    INSERT INTO lich_su_hoa_don
+    (
+        ma_lich_su,
+        id_hoa_don,
+        trang_thai_cu,
+        trang_thai_moi,
+        loai_hanh_dong,
+        hanh_dong,
+        id_nguoi_thuc_hien,
+        thoi_gian
+    )
+    SELECT 
+        CONCAT('LSHD_', REPLACE(NEWID(),'-','')),
+        i.id_hoa_don,
+        'DOI_TRA_' + d.trang_thai,
+        'DOI_TRA_' + i.trang_thai,
+        'DOI_TRA',
+        N'Từ chối đổi trả: ' + ISNULL(i.ly_do_tu_choi, N'Không có lý do'),
+        @user_id, -- 🔥 Để NULL nếu không có trong session
+        GETDATE()
+    FROM inserted i
+    JOIN deleted d 
+        ON i.id_doi_tra = d.id_doi_tra
+    WHERE 
+        i.trang_thai = 'TU_CHOI'
+        AND d.trang_thai <> 'TU_CHOI';
+
+END
+GO
+
 
 INSERT INTO vai_tro (ma_vai_tro, ten_vai_tro)
 VALUES 
@@ -1000,36 +1259,13 @@ VALUES
 GO
 
 UPDATE hoa_don
-SET trang_thai_don = 'DA_GIAO'
+SET trang_thai_don = 'DA_XAC_NHAN'
 WHERE id_hoa_don = 1;
 GO
 
--- Tạo thêm HD002 giao thành công để test dữ liệu bảng doi_tra cho Admin
-INSERT INTO hoa_don
-(ma_hoa_don,id_nguoi_dung,ten_nguoi_nhan,so_dien_thoai,trang_thai_don,loai_don_hang)
-VALUES
-('HD002',3,N'Trần Văn C','0912345678','DA_GIAO','ONLINE');
-GO
-
-INSERT INTO hoa_don_chi_tiet
-(ma_hoa_don_chi_tiet,id_hoa_don,id_spct,ten_san_pham,don_gia,so_luong,thanh_tien)
-VALUES
-('HDCT002',2,3,N'Quần Adidas',200000,2,400000);
-GO
-
--- Cập nhật tổng tiền cho HD002 để khớp với chi tiết
-UPDATE hoa_don SET tong_tien_hang=400000, tong_thanh_toan=400000 WHERE id_hoa_don=2;
-GO
-
--- Tạo 1 request Đổi trả đang chờ xác nhận cho HD002
-INSERT INTO doi_tra (ma_doi_tra, id_hoa_don, ly_do, danh_sach_anh, tong_tien_hoan, trang_thai)
-VALUES
-('DT-TEST-001', 2, N'Sản phẩm bị lỗi đường chỉ', '["https://placehold.co/600x400/png?text=LoiSanPham"]', 200000, 'CHO_XAC_NHAN_HOAN');
-GO
-
-INSERT INTO doi_tra_chi_tiet (id_doi_tra, id_hdct, so_luong_tra, gia_tri_hoan)
-VALUES
-(1, 2, 1, 200000);
+UPDATE hoa_don
+SET trang_thai_don = 'DA_HUY'
+WHERE id_hoa_don = 1;
 GO
 
 
@@ -1060,19 +1296,98 @@ GO
 
 -- 3. (Tùy chọn) Thêm tên để thu ngân dễ nhìn (Ví dụ: "Đơn chờ bàn 1", "Khách VIP")
 -- bi lap nen xoa di
--- ==========================================
--- DU LIEU MAU DE TEST LUONG HOAN TRA
--- ==========================================
-DECLARE @test_hd_id INT;
+-- =============================================
+-- C?P NH?T SCHEMA CHO CH?C NANG �?I TR? N�NG CAO
+-- =============================================
 
-INSERT INTO hoa_don (ma_hoa_don, id_nguoi_dung, loai_don_hang, ten_nguoi_nhan, so_dien_thoai, trang_thai_don, tong_tien_hang, tong_thanh_toan, phi_van_chuyen, tien_giam)
-VALUES ('HD-REFUND-001', 3, 'ONLINE', N'Kh�ch Hang Test Refund', '0912345678', 'DA_GIAO', 510000, 490000, 30000, 50000);
-
-SET @test_hd_id = SCOPE_IDENTITY();
-
-INSERT INTO hoa_don_chi_tiet (ma_hoa_don_chi_tiet, id_hoa_don, id_spct, ten_san_pham, don_gia, so_luong, thanh_tien, kich_thuoc, mau_sac)
-VALUES 
-('HDCT-REF1-1', @test_hd_id, 1, N'San pham Test Hoan Tra 1', 250000, 1, 250000, 'L', 'DO'),
-('HDCT-REF1-2', @test_hd_id, 2, N'San pham Test Hoan Tra 2', 260000, 1, 260000, 'M', 'XANH');
-
+ALTER TABLE hoa_don ADD ngay_nhan_hang DATETIME;
 GO
+
+ALTER TABLE doi_tra ADD loai_doi_tra NVARCHAR(20);
+ALTER TABLE doi_tra ADD tien_chenh_lech DECIMAL(18,2) DEFAULT 0;
+ALTER TABLE doi_tra ADD phi_ship_hoan DECIMAL(18,2) DEFAULT 0;
+ALTER TABLE doi_tra ADD ghi_chu_admin NVARCHAR(500);
+ALTER TABLE doi_tra ADD trang_thai_thanh_toan NVARCHAR(30);
+GO
+
+ALTER TABLE doi_tra_chi_tiet ADD don_gia DECIMAL(18,2);
+ALTER TABLE doi_tra_chi_tiet ADD id_spct_moi INT;
+GO
+
+CREATE TABLE hang_loi (
+    id_hang_loi INT IDENTITY PRIMARY KEY,
+    id_spct INT,
+    id_hoa_don INT,
+    so_luong INT,
+    ly_do NVARCHAR(500),
+    ngay_tao DATETIME DEFAULT GETDATE(),
+    FOREIGN KEY (id_spct) REFERENCES san_pham_chi_tiet(id_spct),
+    FOREIGN KEY (id_hoa_don) REFERENCES hoa_don(id_hoa_don)
+);
+GO
+
+CREATE TABLE lich_su_doi_tra (
+    id_lsdt INT IDENTITY PRIMARY KEY,
+    id_doi_tra INT,
+    id_hoa_don INT,
+    hanh_dong NVARCHAR(100),
+    chi_tiet NVARCHAR(MAX),
+    ngay_tao DATETIME DEFAULT GETDATE(),
+    FOREIGN KEY (id_doi_tra) REFERENCES doi_tra(id_doi_tra),
+    FOREIGN KEY (id_hoa_don) REFERENCES hoa_don(id_hoa_don)
+);
+GO
+
+-- =============================================
+-- SEED DATA �? TEST CH?C NANG �?I TR?
+-- =============================================
+
+-- 1. Th�m Voucher m?u
+INSERT INTO ma_giam_gia (ma_code, kieu_giam_gia, gia_tri_giam, gia_tri_toi_thieu, so_luong, so_luong_da_dung, ngay_bat_dau, ngay_ket_thuc, trang_thai)
+VALUES ('TEST200K', 'AMOUNT', 200000, 1000000, 100, 1, '2026-01-01', '2026-12-31', 1);
+
+-- 2. Th�m don h�ng ONLINE d� giao (C� Voucher)
+-- T?ng h�ng: 1.250.000 (5 c�i SPCT001 * 250k)
+-- Gi?m: 200.000
+-- Thanh to�n: 1.050.000
+INSERT INTO hoa_don (ma_hoa_don, id_nguoi_dung, id_ma_giam_gia, id_pttt, loai_don_hang, ten_nguoi_nhan, so_dien_thoai, tong_tien_hang, tien_giam, tong_thanh_toan, trang_thai_don, ngay_nhan_hang, ngay_tao)
+VALUES ('HD_TEST_ONLINE', 3, (SELECT id_ma_giam_gia FROM ma_giam_gia WHERE ma_code='TEST200K'), 2, 'ONLINE', N'Kh�ch Test Online', '0988888888', 1250000, 200000, 1050000, 'DA_GIAO', DATEADD(day, -2, GETDATE()), GETDATE());
+
+INSERT INTO hoa_don_chi_tiet (ma_hoa_don_chi_tiet, id_hoa_don, id_spct, ten_san_pham, don_gia, so_luong, thanh_tien)
+VALUES ('HDCT_TEST_1', (SELECT id_hoa_don FROM hoa_don WHERE ma_hoa_don='HD_TEST_ONLINE'), 1, N'�o Nike S Tr?ng', 250000, 5, 1250000);
+
+-- 3. Th�m don h�ng OFFLINE d� giao (T?i qu?y)
+INSERT INTO hoa_don (ma_hoa_don, id_nguoi_dung, id_pttt, loai_don_hang, ten_nguoi_nhan, so_dien_thoai, tong_tien_hang, tien_giam, tong_thanh_toan, trang_thai_don, ngay_nhan_hang, ngay_tao)
+VALUES ('HD_TEST_OFFLINE', 3, 1, 'TAI_QUAY', N'Kh�ch Test Offline', '0977777777', 400000, 0, 400000, 'DA_GIAO', DATEADD(day, -1, GETDATE()), GETDATE());
+
+INSERT INTO hoa_don_chi_tiet (ma_hoa_don_chi_tiet, id_hoa_don, id_spct, ten_san_pham, don_gia, so_luong, thanh_tien)
+VALUES ('HDCT_TEST_2', (SELECT id_hoa_don FROM hoa_don WHERE ma_hoa_don='HD_TEST_OFFLINE'), 3, N'Qu?n Adidas S �en', 200000, 2, 400000);
+
+
+-- =============================================
+-- TH�M D? LI?U S?N PH?M NHI?U BI?N TH? & �ON H�NG TEST
+-- =============================================
+
+-- 1. Th�m s?n ph?m Hoodie
+INSERT INTO san_pham (id_danh_muc, id_thuong_hieu, id_chat_lieu, ma_san_pham, ten_san_pham, gia_goc, trang_thai)
+VALUES (1, 1, 1, 'SP003', N'�o Hoodie Nike Premium', 500000, 1);
+
+-- 2. Th�m c�c bi?n th? cho Hoodie (Size S/M x M�u �en/Tr?ng)
+-- Gi? s? ID: KichThuoc S=1, M=2 | MauSac �en=1, Tr?ng=2
+INSERT INTO san_pham_chi_tiet (id_san_pham, id_kich_thuoc, id_mau_sac, id_thuong_hieu, ma_san_pham_chi_tiet, so_luong, so_luong_da_ban, gia_ban, trang_thai)
+VALUES 
+((SELECT id_san_pham FROM san_pham WHERE ma_san_pham='SP003'), 1, 1, 1, 'SPCT004', 20, 0, 550000, 1),
+((SELECT id_san_pham FROM san_pham WHERE ma_san_pham='SP003'), 2, 1, 1, 'SPCT005', 20, 0, 550000, 1),
+((SELECT id_san_pham FROM san_pham WHERE ma_san_pham='SP003'), 1, 2, 1, 'SPCT006', 20, 0, 550000, 1),
+((SELECT id_san_pham FROM san_pham WHERE ma_san_pham='SP003'), 2, 2, 1, 'SPCT007', 20, 0, 550000, 1);
+
+-- 3. T?o h�a don ONLINE d� giao d? test d?i h�ng
+INSERT INTO hoa_don (ma_hoa_don, id_nguoi_dung, id_pttt, loai_don_hang, ten_nguoi_nhan, so_dien_thoai, tong_tien_hang, tien_giam, tong_thanh_toan, trang_thai_don, ngay_nhan_hang, ngay_tao)
+VALUES ('HD_TEST_EXCHANGE', 3, 2, 'ONLINE', N'Ngu?i Mua Hoodie', '0966666666', 1100000, 0, 1100000, 'DA_GIAO', DATEADD(day, -1, GETDATE()), GETDATE());
+
+-- 4. Chi ti?t h�a don (Mua 2 Hoodie S �en)
+INSERT INTO hoa_don_chi_tiet (ma_hoa_don_chi_tiet, id_hoa_don, id_spct, ten_san_pham, kich_thuoc, mau_sac, don_gia, so_luong, thanh_tien)
+VALUES ('HDCT_TEST_3', (SELECT id_hoa_don FROM hoa_don WHERE ma_hoa_don='HD_TEST_EXCHANGE'), 
+(SELECT id_spct FROM san_pham_chi_tiet WHERE ma_san_pham_chi_tiet='SPCT004'), 
+N'�o Hoodie Nike Premium', 'S', N'�en', 550000, 2, 1100000);
+

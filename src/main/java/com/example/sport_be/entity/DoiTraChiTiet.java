@@ -27,6 +27,12 @@ public class DoiTraChiTiet {
     @Column(name = "so_luong_tra")
     private Integer soLuongTra;
 
+    @Column(name = "don_gia")
+    private BigDecimal donGia;
+
     @Column(name = "gia_tri_hoan")
     private BigDecimal giaTriHoan;
+
+    @Column(name = "id_spct_moi")
+    private Integer idSpctMoi; // ID của sản phẩm chi tiết mới nếu là EXCHANGE
 }

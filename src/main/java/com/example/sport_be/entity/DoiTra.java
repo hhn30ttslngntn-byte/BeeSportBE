@@ -27,6 +27,12 @@ public class DoiTra {
     @Column(name = "ly_do", length = 255)
     private String lyDo;
 
+    @Column(name = "ly_do_tu_choi", length = 255)
+    private String lyDoTuChoi;
+
+    @Column(name = "tinh_trang_hang", length = 20)
+    private String tinhTrangHang;
+
     @Column(name = "danh_sach_anh", columnDefinition = "NVARCHAR(MAX)")
     private String danhSachAnh;
 
@@ -35,6 +41,21 @@ public class DoiTra {
 
     @Column(name = "trang_thai", length = 30)
     private String trangThai;
+
+    @Column(name = "loai_doi_tra", length = 20)
+    private String loaiDoiTra;
+
+    @Column(name = "tien_chenh_lech")
+    private BigDecimal tienChenhLech;
+
+    @Column(name = "phi_ship_hoan")
+    private BigDecimal phiShipHoan;
+
+    @Column(name = "ghi_chu_admin", length = 500)
+    private String ghiChuAdmin;
+
+    @Column(name = "trang_thai_thanh_toan", length = 30)
+    private String trangThaiThanhToan; // CHUA_THANH_TOAN, DA_THANH_TOAN, KHONG_CAN_THANH_TOAN
 
     @Column(name = "ngay_yeu_cau")
     private LocalDateTime ngayYeuCau;
