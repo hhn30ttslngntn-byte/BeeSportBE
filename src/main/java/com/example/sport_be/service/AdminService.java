@@ -1,7 +1,10 @@
 package com.example.sport_be.service;
 
 import com.example.sport_be.entity.*;
+import com.example.sport_be.dto.DoiTraRequest;
+import com.example.sport_be.dto.DoiTraChiTietRequest;
 import com.example.sport_be.repository.*;
+import jakarta.persistence.EntityManager;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -9,11 +12,14 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.YearMonth;
 import java.text.Normalizer;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -45,6 +51,11 @@ public class AdminService {
     private final GioHangChiTietRepository gioHangChiTietRepository;
     private final HinhAnhSanPhamRepository hinhAnhSanPhamRepository;
     private final DiaChiVanChuyenRepository diaChiVanChuyenRepository;
+    private final VaiTroRepository vaiTroRepository;
+    private final DoiTraRepository doiTraRepository;
+    private final DoiTraChiTietRepository doiTraChiTietRepository;
+    private final DoiTraService doiTraService;
+    private final EntityManager entityManager;
 
     // --- Product ---
     public List<SanPham> getAllProducts() {
@@ -59,11 +70,12 @@ public class AdminService {
                     .mapToInt(Integer::intValue)
                     .sum();
             sp.setTongSoLuong(tongSoLuong);
-            // Tìm đợt giảm giá đang hoạt động cho sản phẩm này
+            // Tìm đợt giảm giá đang hoạt động cho sản phẩm này (dựa trên các biến thể của nó)
             GiamGiaSanPham activeGG = giamGiaSanPhamRepository.findAll().stream()
-                .filter(gg -> gg.getSanPham().getId().equals(sp.getId()))
-                .filter(gg -> gg.getDotGiamGia().getTrangThai())
-                .filter(gg -> gg.getDotGiamGia().getNgayBatDau().isBefore(now) && gg.getDotGiamGia().getNgayKetHuc().isAfter(now))
+                .filter(gg -> gg.getSanPhamChiTiet() != null && gg.getSanPhamChiTiet().getSanPham().getId().equals(sp.getId()))
+                .filter(gg -> gg.getDotGiamGia() != null && Boolean.TRUE.equals(gg.getDotGiamGia().getTrangThai()))
+                .filter(gg -> gg.getDotGiamGia().getNgayBatDau() != null && gg.getDotGiamGia().getNgayBatDau().isBefore(now))
+                .filter(gg -> gg.getDotGiamGia().getNgayKetHuc() != null && gg.getDotGiamGia().getNgayKetHuc().isAfter(now))
                 .findFirst().orElse(null);
             
             if (activeGG != null) {
@@ -94,9 +106,10 @@ public class AdminService {
         // Tính giá sau giảm cho sản phẩm cha
         LocalDateTime now = LocalDateTime.now();
         GiamGiaSanPham activeGG = giamGiaSanPhamRepository.findAll().stream()
-            .filter(gg -> gg.getSanPham().getId().equals(sp.getId()))
-            .filter(gg -> gg.getDotGiamGia().getTrangThai())
-            .filter(gg -> gg.getDotGiamGia().getNgayBatDau().isBefore(now) && gg.getDotGiamGia().getNgayKetHuc().isAfter(now))
+            .filter(gg -> gg.getSanPhamChiTiet() != null && gg.getSanPhamChiTiet().getSanPham().getId().equals(sp.getId()))
+            .filter(gg -> gg.getDotGiamGia() != null && Boolean.TRUE.equals(gg.getDotGiamGia().getTrangThai()))
+            .filter(gg -> gg.getDotGiamGia().getNgayBatDau() != null && gg.getDotGiamGia().getNgayBatDau().isBefore(now))
+            .filter(gg -> gg.getDotGiamGia().getNgayKetHuc() != null && gg.getDotGiamGia().getNgayKetHuc().isAfter(now))
             .findFirst().orElse(null);
         
         if (activeGG != null) {
@@ -113,6 +126,9 @@ public class AdminService {
         }
 
         List<SanPhamChiTiet> details = sanPhamChiTietRepository.findBySanPhamId(id);
+        for (SanPhamChiTiet v : details) {
+            v.setGiaSauGiam(getPromotionPriceForVariant(v));
+        }
         
         return new Object() {
             public SanPham getProduct() { return sp; }
@@ -135,6 +151,9 @@ public class AdminService {
         }
         if (sanPham.getThuongHieu() != null && sanPham.getThuongHieu().getId() != null) {
             sanPham.setThuongHieu(thuongHieuRepository.findById(sanPham.getThuongHieu().getId()).orElse(null));
+        }
+        if (sanPham.getChatLieu() != null && sanPham.getChatLieu().getId() != null) {
+            sanPham.setChatLieu(chatLieuRepository.findById(sanPham.getChatLieu().getId()).orElse(null));
         }
 
         // 3. Lưu Sản phẩm (Cha)
@@ -163,9 +182,6 @@ public class AdminService {
                 }
                 if (v.getKichThuoc() != null && v.getKichThuoc().getId() != null) {
                     v.setKichThuoc(kichThuocRepository.findById(v.getKichThuoc().getId()).orElse(null));
-                }
-                if (v.getChatLieu() != null && v.getChatLieu().getId() != null) {
-                    v.setChatLieu(chatLieuRepository.findById(v.getChatLieu().getId()).orElse(null));
                 }
             }
             sanPhamChiTietRepository.saveAll(variants);
@@ -240,7 +256,34 @@ public class AdminService {
 
     // --- Product Details ---
     public List<SanPhamChiTiet> getAllProductDetails() {
-        return sanPhamChiTietRepository.findAll();
+        List<SanPhamChiTiet> details = sanPhamChiTietRepository.findAll();
+        for (SanPhamChiTiet v : details) {
+            v.setGiaSauGiam(getPromotionPriceForVariant(v));
+        }
+        return details;
+    }
+
+    private BigDecimal getPromotionPriceForVariant(SanPhamChiTiet spct) {
+        BigDecimal giaBan = spct.getGiaBan();
+        java.time.LocalDateTime now = java.time.LocalDateTime.now();
+        
+        GiamGiaSanPham activeGG = giamGiaSanPhamRepository.findAll().stream()
+            .filter(gg -> gg.getSanPhamChiTiet() != null && gg.getSanPhamChiTiet().getId().equals(spct.getId()))
+            .filter(gg -> gg.getDotGiamGia() != null && Boolean.TRUE.equals(gg.getDotGiamGia().getTrangThai()))
+            .filter(gg -> gg.getDotGiamGia().getNgayBatDau() != null && gg.getDotGiamGia().getNgayBatDau().isBefore(now))
+            .filter(gg -> gg.getDotGiamGia().getNgayKetHuc() != null && gg.getDotGiamGia().getNgayKetHuc().isAfter(now))
+            .findFirst().orElse(null);
+            
+        if (activeGG != null) {
+            DotGiamGia dgg = activeGG.getDotGiamGia();
+            if ("PERCENT".equals(dgg.getKieuGiamGia())) {
+                BigDecimal giam = giaBan.multiply(dgg.getGiaTriGiam().divide(new BigDecimal(100)));
+                return giaBan.subtract(giam);
+            } else {
+                return giaBan.subtract(dgg.getGiaTriGiam());
+            }
+        }
+        return giaBan;
     }
 
     @Transactional
@@ -266,6 +309,18 @@ public class AdminService {
         if (brand.getMaThuongHieu() == null || brand.getMaThuongHieu().isBlank()) {
             brand.setMaThuongHieu(generateAttributeCode(brand.getTenThuongHieu()));
         }
+
+        // Prevent duplicate brand
+        if (brand.getId() == null) {
+            if (thuongHieuRepository.findByMaThuongHieu(brand.getMaThuongHieu()).isPresent()) {
+                throw new RuntimeException("Thương hiệu '" + brand.getTenThuongHieu() + "' đã tồn tại!");
+            }
+        } else {
+            ThuongHieu existing = thuongHieuRepository.findByMaThuongHieu(brand.getMaThuongHieu()).orElse(null);
+            if (existing != null && !existing.getId().equals(brand.getId())) {
+                throw new RuntimeException("Mã thương hiệu '" + brand.getMaThuongHieu() + "' đã tồn tại!");
+            }
+        }
         return thuongHieuRepository.save(brand);
     }
 
@@ -279,8 +334,34 @@ public class AdminService {
     }
 
     public NguoiDung saveUser(NguoiDung user) {
-        if (user.getMaNguoiDung() == null || user.getMaNguoiDung().isEmpty()) {
-            user.setMaNguoiDung("USER" + System.currentTimeMillis());
+        if (user.getId() == null) {
+            // Chỉ bắt buộc các trường này khi là thêm mới một TÀI KHOẢN đầy đủ (Nhân viên/Khách hàng đăng ký)
+            if (user.getEmail() == null || user.getEmail().isBlank()) {
+                throw new RuntimeException("Email là bắt buộc khi tạo tài khoản!");
+            }
+            if (user.getMatKhau() == null || user.getMatKhau().isBlank()) {
+                throw new RuntimeException("Mật khẩu là bắt buộc khi tạo tài khoản!");
+            }
+            if (user.getHoTen() == null || user.getHoTen().isBlank()) {
+                throw new RuntimeException("Họ tên là bắt buộc khi tạo tài khoản!");
+            }
+            if (user.getSoDienThoai() == null || user.getSoDienThoai().isBlank()) {
+                throw new RuntimeException("Số điện thoại là bắt buộc khi tạo tài khoản!");
+            }
+        }
+        
+        // Tự động sinh mã người dùng nếu chưa có (Tự nhảy mã)
+        if (user.getMaNguoiDung() == null || user.getMaNguoiDung().isBlank()) {
+            String prefix = "USER";
+            if (user.getVaiTro() != null) {
+                String roleName = user.getVaiTro().getTen() != null ? user.getVaiTro().getTen().toUpperCase() : "";
+                if (roleName.contains("CUSTOMER") || roleName.contains("KHÁCH")) {
+                    prefix = "KH";
+                } else if (roleName.contains("ADMIN") || roleName.contains("STAFF") || roleName.contains("NHÂN VIÊN")) {
+                    prefix = "NV";
+                }
+            }
+            user.setMaNguoiDung(prefix + System.currentTimeMillis());
         }
         return nguoiDungRepository.save(user);
     }
@@ -301,84 +382,475 @@ public class AdminService {
     }
 
     public Map<String, Object> getRevenueSummary() {
-        List<HoaDon> deliveredBills = hoaDonRepository.findAll().stream()
-                .filter(bill -> "DA_GIAO".equals(bill.getTrangThaiDon()))
-                .toList();
-
         LocalDate today = LocalDate.now();
-        List<HoaDon> todayBills = deliveredBills.stream()
-                .filter(bill -> bill.getNgayTao() != null && today.equals(bill.getNgayTao().toLocalDate()))
-                .toList();
+        return getRevenueSummary("day", "revenue", "ALL", today.minusDays(29), today);
+    }
 
-        BigDecimal todayRevenue = todayBills.stream()
-                .map(HoaDon::getTongThanhToan)
-                .filter(java.util.Objects::nonNull)
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
-
-        int todayOrders = todayBills.size();
-        int todayProductsSold = todayBills.stream()
-                .map(HoaDon::getId)
-                .filter(java.util.Objects::nonNull)
-                .mapToInt(id -> hoaDonChiTietRepository.findByHoaDonId(id).stream()
-                        .map(HoaDonChiTiet::getSoLuong)
-                        .filter(java.util.Objects::nonNull)
-                        .mapToInt(Integer::intValue)
-                        .sum())
-                .sum();
-
-        Map<LocalDate, List<HoaDon>> groupedByDate = new java.util.TreeMap<>(java.util.Comparator.reverseOrder());
-        for (HoaDon bill : deliveredBills) {
-            if (bill.getNgayTao() == null) continue;
-            groupedByDate.computeIfAbsent(bill.getNgayTao().toLocalDate(), key -> new ArrayList<>()).add(bill);
+    public Map<String, Object> getRevenueSummary(String mode, String metric, String orderType, LocalDate from, LocalDate to) {
+        String normalizedMode = mode == null ? "day" : mode.trim().toLowerCase();
+        if (!List.of("day", "month", "year").contains(normalizedMode)) {
+            throw new RuntimeException("mode must be one of: day, month, year");
         }
 
-        List<Map<String, Object>> dailyRevenue = groupedByDate.entrySet().stream()
-                .map(entry -> {
-                    BigDecimal revenue = entry.getValue().stream()
-                            .map(HoaDon::getTongThanhToan)
-                            .filter(java.util.Objects::nonNull)
-                            .reduce(BigDecimal.ZERO, BigDecimal::add);
+        String normalizedMetric = metric == null ? "revenue" : metric.trim().toLowerCase();
+        if (!List.of("quantity", "revenue").contains(normalizedMetric)) {
+            throw new RuntimeException("metric must be one of: quantity, revenue");
+        }
 
-                    int productsSold = entry.getValue().stream()
-                            .map(HoaDon::getId)
-                            .filter(java.util.Objects::nonNull)
-                            .mapToInt(id -> hoaDonChiTietRepository.findByHoaDonId(id).stream()
-                                    .map(HoaDonChiTiet::getSoLuong)
-                                    .filter(java.util.Objects::nonNull)
-                                    .mapToInt(Integer::intValue)
-                                    .sum())
-                            .sum();
+        String normalizedOrderType = normalizeOrderType(orderType);
 
-                    Map<String, Object> item = new LinkedHashMap<>();
-                    item.put("date", entry.getKey());
-                    item.put("orders", entry.getValue().size());
-                    item.put("productsSold", productsSold);
-                    item.put("revenue", revenue);
-                    return item;
-                })
+        LocalDate today = LocalDate.now();
+        LocalDate rangeFrom = from == null ? today.minusDays(29) : from;
+        LocalDate rangeTo = to == null ? today : to;
+        if (rangeFrom.isAfter(rangeTo)) {
+            throw new RuntimeException("from must be less than or equal to to");
+        }
+
+        List<HoaDon> allBills = hoaDonRepository.findAll().stream()
+                .filter(bill -> bill.getNgayTao() != null)
                 .toList();
 
+        List<HoaDon> deliveredBills = allBills.stream()
+                .filter(this::isRevenueRecognizedBill)
+                .toList();
+
+        List<HoaDon> filteredBills = filterBillsByOrderType(deliveredBills, normalizedOrderType);
+        List<HoaDon> filteredAllBills = filterBillsByOrderType(allBills, normalizedOrderType);
+
+        Map<String, Object> overview = buildOverviewSummary(today, filteredBills);
+        Map<String, Object> chart = buildChartData(normalizedMode, normalizedMetric, rangeFrom, rangeTo, filteredBills);
+        Map<String, Object> orderStatus = buildOrderStatusData(rangeFrom, rangeTo, filteredAllBills);
+        Map<String, Object> channelSummary = buildChannelSummary(rangeFrom, rangeTo, deliveredBills);
+        List<Map<String, Object>> employeeStats = buildEmployeeStats(rangeFrom, rangeTo, filteredAllBills);
+
         Map<String, Object> stats = new LinkedHashMap<>();
-        stats.put("todayRevenue", todayRevenue);
-        stats.put("todayOrders", todayOrders);
-        stats.put("todayProductsSold", todayProductsSold);
+        stats.put("todayRevenue", ((Map<?, ?>) overview.get("today")).get("revenue"));
+        stats.put("todayOrders", filteredBills.stream()
+                .filter(bill -> today.equals(bill.getNgayTao().toLocalDate()))
+                .count());
+        stats.put("todayProductsSold", filteredBills.stream()
+                .filter(bill -> today.equals(bill.getNgayTao().toLocalDate()))
+                .mapToInt(this::calculateDeliveredQuantity)
+                .sum());
+
+        List<Map<String, Object>> dailyRevenue = buildChartData("day", "revenue", rangeFrom, rangeTo, filteredBills)
+                .get("data") instanceof List<?> data ? (List<Map<String, Object>>) data : List.of();
+
+        Map<String, Object> filters = new LinkedHashMap<>();
+        filters.put("from", rangeFrom);
+        filters.put("to", rangeTo);
+        filters.put("mode", normalizedMode);
+        filters.put("metric", normalizedMetric);
+        filters.put("orderType", normalizedOrderType);
 
         Map<String, Object> response = new LinkedHashMap<>();
+        response.put("filters", filters);
         response.put("stats", stats);
+        response.put("overview", overview);
+        response.put("channelSummary", channelSummary);
+        response.put("chart", chart);
+        response.put("orderStatus", orderStatus);
+        response.put("employeeStats", employeeStats);
         response.put("dailyRevenue", dailyRevenue);
         return response;
     }
 
+    private String normalizeOrderType(String orderType) {
+        if (orderType == null || orderType.isBlank()) {
+            return "ALL";
+        }
+
+        String normalized = orderType.trim().toUpperCase();
+        if (!List.of("ALL", "ONLINE", "TAI_QUAY").contains(normalized)) {
+            throw new RuntimeException("orderType must be one of: ALL, ONLINE, TAI_QUAY");
+        }
+        return normalized;
+    }
+
+    private List<HoaDon> filterBillsByOrderType(List<HoaDon> bills, String orderType) {
+        if ("ALL".equalsIgnoreCase(orderType)) {
+            return bills;
+        }
+        return bills.stream()
+                .filter(bill -> orderType.equalsIgnoreCase(bill.getLoaiDonHang()))
+                .toList();
+    }
+
+    private Map<String, Object> buildOverviewSummary(LocalDate today, List<HoaDon> deliveredBills) {
+        LocalDate yesterday = today.minusDays(1);
+        BigDecimal todayRevenue = calculateRevenueByDateRange(deliveredBills, today, today);
+        BigDecimal yesterdayRevenue = calculateRevenueByDateRange(deliveredBills, yesterday, yesterday);
+
+        LocalDate thisWeekFrom = today.with(DayOfWeek.MONDAY);
+        LocalDate thisWeekTo = today.with(DayOfWeek.SUNDAY);
+        LocalDate lastWeekFrom = thisWeekFrom.minusWeeks(1);
+        LocalDate lastWeekTo = thisWeekTo.minusWeeks(1);
+        BigDecimal weekRevenue = calculateRevenueByDateRange(deliveredBills, thisWeekFrom, thisWeekTo);
+        BigDecimal lastWeekRevenue = calculateRevenueByDateRange(deliveredBills, lastWeekFrom, lastWeekTo);
+
+        LocalDate thisMonthFrom = today.withDayOfMonth(1);
+        LocalDate thisMonthTo = today.withDayOfMonth(today.lengthOfMonth());
+        LocalDate lastMonthBase = today.minusMonths(1);
+        LocalDate lastMonthFrom = lastMonthBase.withDayOfMonth(1);
+        LocalDate lastMonthTo = lastMonthBase.withDayOfMonth(lastMonthBase.lengthOfMonth());
+        BigDecimal monthRevenue = calculateRevenueByDateRange(deliveredBills, thisMonthFrom, thisMonthTo);
+        BigDecimal lastMonthRevenue = calculateRevenueByDateRange(deliveredBills, lastMonthFrom, lastMonthTo);
+
+        Map<String, Object> todayCard = new LinkedHashMap<>();
+        todayCard.put("revenue", todayRevenue);
+        todayCard.put("changePercent", calculatePercentChange(todayRevenue, yesterdayRevenue));
+        todayCard.put("compareBaseRevenue", yesterdayRevenue);
+
+        Map<String, Object> weekCard = new LinkedHashMap<>();
+        weekCard.put("revenue", weekRevenue);
+        weekCard.put("changePercent", calculatePercentChange(weekRevenue, lastWeekRevenue));
+        weekCard.put("compareBaseRevenue", lastWeekRevenue);
+
+        Map<String, Object> monthCard = new LinkedHashMap<>();
+        monthCard.put("revenue", monthRevenue);
+        monthCard.put("changePercent", calculatePercentChange(monthRevenue, lastMonthRevenue));
+        monthCard.put("compareBaseRevenue", lastMonthRevenue);
+
+        Map<String, Object> overview = new LinkedHashMap<>();
+        overview.put("today", todayCard);
+        overview.put("week", weekCard);
+        overview.put("month", monthCard);
+        return overview;
+    }
+
+    private Map<String, Object> buildChartData(String mode, String metric, LocalDate from, LocalDate to, List<HoaDon> deliveredBills) {
+        Map<String, List<HoaDon>> grouped = new LinkedHashMap<>();
+
+        if ("year".equals(mode)) {
+            for (int year = from.getYear(); year <= to.getYear(); year++) {
+                grouped.put(String.valueOf(year), new ArrayList<>());
+            }
+            for (HoaDon bill : deliveredBills) {
+                LocalDate billDate = bill.getNgayTao().toLocalDate();
+                if (billDate.isBefore(from) || billDate.isAfter(to)) continue;
+                grouped.computeIfAbsent(String.valueOf(billDate.getYear()), key -> new ArrayList<>()).add(bill);
+            }
+        } else if ("month".equals(mode)) {
+            YearMonth start = YearMonth.from(from);
+            YearMonth end = YearMonth.from(to);
+            YearMonth cursor = start;
+            while (!cursor.isAfter(end)) {
+                grouped.put(cursor.toString(), new ArrayList<>());
+                cursor = cursor.plusMonths(1);
+            }
+            for (HoaDon bill : deliveredBills) {
+                LocalDate billDate = bill.getNgayTao().toLocalDate();
+                if (billDate.isBefore(from) || billDate.isAfter(to)) continue;
+                grouped.computeIfAbsent(YearMonth.from(billDate).toString(), key -> new ArrayList<>()).add(bill);
+            }
+        } else {
+            LocalDate cursor = from;
+            while (!cursor.isAfter(to)) {
+                grouped.put(cursor.toString(), new ArrayList<>());
+                cursor = cursor.plusDays(1);
+            }
+            for (HoaDon bill : deliveredBills) {
+                LocalDate billDate = bill.getNgayTao().toLocalDate();
+                if (billDate.isBefore(from) || billDate.isAfter(to)) continue;
+                grouped.computeIfAbsent(billDate.toString(), key -> new ArrayList<>()).add(bill);
+            }
+        }
+
+        List<Map<String, Object>> data = grouped.entrySet().stream()
+                .map(entry -> {
+                    List<HoaDon> bucket = entry.getValue();
+                    BigDecimal revenue = bucket.stream()
+                            .map(this::calculateProductRevenue)
+                            .reduce(BigDecimal.ZERO, BigDecimal::add);
+                    int quantity = bucket.stream().mapToInt(this::calculateDeliveredQuantity).sum();
+
+                    Map<String, Object> point = new LinkedHashMap<>();
+                    point.put("label", entry.getKey());
+                    point.put("date", entry.getKey());
+                    point.put("orders", bucket.size());
+                    point.put("productsSold", quantity);
+                    point.put("quantity", quantity);
+                    point.put("revenue", revenue);
+                    point.put("value", "revenue".equals(metric) ? revenue : BigDecimal.valueOf(quantity));
+                    return point;
+                })
+                .toList();
+
+        Map<String, Object> chart = new LinkedHashMap<>();
+        chart.put("mode", mode);
+        chart.put("metric", metric);
+        chart.put("data", data);
+        return chart;
+    }
+
+    private Map<String, Object> buildOrderStatusData(LocalDate from, LocalDate to, List<HoaDon> allBills) {
+        List<HoaDon> inRange = allBills.stream()
+                .filter(bill -> {
+                    LocalDate billDate = bill.getNgayTao().toLocalDate();
+                    return !billDate.isBefore(from) && !billDate.isAfter(to);
+                })
+                .toList();
+
+        Map<String, Integer> grouped = new LinkedHashMap<>();
+        grouped.put("HUY_GIAO_DICH", 0);
+        grouped.put("DANG_XU_LY", 0);
+        grouped.put("THANH_CONG", 0);
+        grouped.put("DA_HUY", 0);
+
+        for (HoaDon bill : inRange) {
+            String groupKey = mapStatusGroup(bill.getTrangThaiDon());
+            grouped.put(groupKey, grouped.get(groupKey) + 1);
+        }
+
+        List<Map<String, Object>> items = new ArrayList<>();
+        items.add(buildStatusItem("HUY_GIAO_DICH", "Hủy giao dịch", grouped.get("HUY_GIAO_DICH"), "#ef4444"));
+        items.add(buildStatusItem("DANG_XU_LY", "Đang xử lý", grouped.get("DANG_XU_LY"), "#4f46e5"));
+        items.add(buildStatusItem("THANH_CONG", "Thành công", grouped.get("THANH_CONG"), "#22c55e"));
+        items.add(buildStatusItem("DA_HUY", "Đã hủy", grouped.get("DA_HUY"), "#38bdf8"));
+
+        Map<String, Object> response = new LinkedHashMap<>();
+        response.put("totalOrders", inRange.size());
+        response.put("items", items);
+        return response;
+    }
+
+    private Map<String, Object> buildChannelSummary(LocalDate from, LocalDate to, List<HoaDon> deliveredBills) {
+        List<HoaDon> inRange = deliveredBills.stream()
+                .filter(bill -> {
+                    LocalDate billDate = bill.getNgayTao().toLocalDate();
+                    return !billDate.isBefore(from) && !billDate.isAfter(to);
+                })
+                .toList();
+
+        List<HoaDon> onlineBills = inRange.stream()
+                .filter(bill -> "ONLINE".equalsIgnoreCase(bill.getLoaiDonHang()))
+                .toList();
+
+        List<HoaDon> posBills = inRange.stream()
+                .filter(bill -> "TAI_QUAY".equalsIgnoreCase(bill.getLoaiDonHang()))
+                .toList();
+
+        BigDecimal onlineRevenue = onlineBills.stream()
+                .map(this::calculateOnlineRevenue)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+        BigDecimal posRevenue = posBills.stream()
+                .map(this::calculatePosRevenue)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+        Map<String, Object> online = new LinkedHashMap<>();
+        online.put("revenue", onlineRevenue);
+        online.put("orders", onlineBills.size());
+
+        Map<String, Object> pos = new LinkedHashMap<>();
+        pos.put("revenue", posRevenue);
+        pos.put("orders", posBills.size());
+
+        Map<String, Object> total = new LinkedHashMap<>();
+        total.put("revenue", onlineRevenue.add(posRevenue));
+        total.put("orders", inRange.size());
+
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("online", online);
+        result.put("pos", pos);
+        result.put("total", total);
+        return result;
+    }
+
+    private Map<String, Object> buildStatusItem(String key, String label, Integer count, String color) {
+        Map<String, Object> item = new LinkedHashMap<>();
+        item.put("key", key);
+        item.put("label", label);
+        item.put("count", count);
+        item.put("color", color);
+        return item;
+    }
+
+    private List<Map<String, Object>> buildEmployeeStats(LocalDate from, LocalDate to, List<HoaDon> allBills) {
+        Map<Integer, Map<String, Object>> byEmployee = new LinkedHashMap<>();
+
+        for (HoaDon bill : allBills) {
+            if (bill.getNgayTao() == null || bill.getNguoiDung() == null || bill.getNguoiDung().getId() == null) {
+                continue;
+            }
+
+            LocalDate billDate = bill.getNgayTao().toLocalDate();
+            if (billDate.isBefore(from) || billDate.isAfter(to)) {
+                continue;
+            }
+
+            NguoiDung account = bill.getNguoiDung();
+            String roleCode = account.getVaiTro() != null ? account.getVaiTro().getMa() : null;
+            if (!"ADMIN".equalsIgnoreCase(roleCode) && !"STAFF".equalsIgnoreCase(roleCode)) {
+                continue;
+            }
+
+            Integer employeeId = account.getId();
+            Map<String, Object> stats = byEmployee.computeIfAbsent(employeeId, key -> {
+                Map<String, Object> init = new LinkedHashMap<>();
+                init.put("employeeId", account.getId());
+                init.put("employeeCode", account.getMaNguoiDung());
+                init.put("employeeName", account.getHoTen());
+                init.put("totalOrders", 0);
+                init.put("successfulOrders", 0);
+                init.put("revenue", BigDecimal.ZERO);
+                return init;
+            });
+
+            stats.put("totalOrders", (Integer) stats.get("totalOrders") + 1);
+            if (isRevenueRecognizedBill(bill)) {
+                stats.put("successfulOrders", (Integer) stats.get("successfulOrders") + 1);
+                stats.put("revenue", ((BigDecimal) stats.get("revenue")).add(calculateProductRevenue(bill)));
+            }
+        }
+
+        return byEmployee.values().stream()
+                .sorted((left, right) -> Integer.compare((Integer) right.get("totalOrders"), (Integer) left.get("totalOrders")))
+                .toList();
+    }
+
+    private BigDecimal calculateRevenueByDateRange(List<HoaDon> bills, LocalDate from, LocalDate to) {
+        return bills.stream()
+                .filter(bill -> {
+                    LocalDate billDate = bill.getNgayTao().toLocalDate();
+                    return !billDate.isBefore(from) && !billDate.isAfter(to);
+                })
+                .map(this::calculateProductRevenue)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+    }
+
+    private BigDecimal calculatePercentChange(BigDecimal current, BigDecimal previous) {
+        if (previous == null || previous.compareTo(BigDecimal.ZERO) == 0) {
+            return null;
+        }
+        return current.subtract(previous)
+                .multiply(BigDecimal.valueOf(100))
+                .divide(previous, 2, RoundingMode.HALF_UP);
+    }
+
+    private int calculateDeliveredQuantity(HoaDon bill) {
+        if (bill.getId() == null) {
+            return 0;
+        }
+        return hoaDonChiTietRepository.findByHoaDonId(bill.getId()).stream()
+                .map(HoaDonChiTiet::getSoLuong)
+                .filter(java.util.Objects::nonNull)
+                .mapToInt(Integer::intValue)
+                .sum();
+    }
+
+    private boolean isRevenueRecognizedBill(HoaDon bill) {
+        if (bill == null || bill.getTrangThaiDon() == null || bill.getTrangThaiDon().isBlank()) {
+            return false;
+        }
+
+        String status = bill.getTrangThaiDon().trim().toUpperCase();
+        String orderType = bill.getLoaiDonHang() == null ? "" : bill.getLoaiDonHang().trim().toUpperCase();
+
+        if ("ONLINE".equals(orderType)) {
+            return List.of("DA_THANH_TOAN", "DANG_GIAO", "DA_GIAO").contains(status);
+        }
+        if ("TAI_QUAY".equals(orderType)) {
+            return "DA_GIAO".equals(status);
+        }
+
+        return "DA_GIAO".equals(status);
+    }
+
+    private String mapStatusGroup(String status) {
+        if (status == null || status.isBlank()) {
+            return "DANG_XU_LY";
+        }
+        return switch (status.trim().toUpperCase()) {
+            case "HOAN_TRA", "HUY_GIAO_DICH" -> "HUY_GIAO_DICH";
+            case "DA_GIAO" -> "THANH_CONG";
+            case "DA_HUY" -> "DA_HUY";
+            default -> "DANG_XU_LY";
+        };
+    }
+
+    private BigDecimal calculateProductRevenue(HoaDon bill) {
+        if ("ONLINE".equalsIgnoreCase(bill.getLoaiDonHang())) {
+            return calculateOnlineRevenue(bill);
+        }
+        if ("TAI_QUAY".equalsIgnoreCase(bill.getLoaiDonHang())) {
+            return calculatePosRevenue(bill);
+        }
+
+        BigDecimal tongTienHang = bill.getTongTienHang();
+        BigDecimal tienGiam = bill.getTienGiam() != null ? bill.getTienGiam() : BigDecimal.ZERO;
+        if (tongTienHang != null) {
+            return tongTienHang.subtract(tienGiam).max(BigDecimal.ZERO);
+        }
+
+        BigDecimal tongThanhToan = bill.getTongThanhToan() != null ? bill.getTongThanhToan() : BigDecimal.ZERO;
+        BigDecimal phiVanChuyen = bill.getPhiVanChuyen() != null ? bill.getPhiVanChuyen() : BigDecimal.ZERO;
+        return tongThanhToan.subtract(phiVanChuyen).max(BigDecimal.ZERO);
+    }
+
+    private BigDecimal calculateOnlineRevenue(HoaDon bill) {
+        BigDecimal tongThanhToan = bill.getTongThanhToan() != null ? bill.getTongThanhToan() : BigDecimal.ZERO;
+        BigDecimal phiVanChuyen = bill.getPhiVanChuyen() != null ? bill.getPhiVanChuyen() : BigDecimal.ZERO;
+        return tongThanhToan.subtract(phiVanChuyen).max(BigDecimal.ZERO);
+    }
+
+    private BigDecimal calculatePosRevenue(HoaDon bill) {
+        BigDecimal tongThanhToan = bill.getTongThanhToan() != null ? bill.getTongThanhToan() : BigDecimal.ZERO;
+        return tongThanhToan.max(BigDecimal.ZERO);
+    }
+
+    private static final Map<String, List<String>> ONLINE_STATUS_TRANSITIONS = Map.of(
+            "CHO_XAC_NHAN", List.of("DA_XAC_NHAN", "DA_HUY"),
+            "DA_XAC_NHAN", List.of("DANG_GIAO", "DA_HUY"),
+            "DANG_GIAO", List.of("DA_GIAO"),
+            "DA_GIAO", List.of("HOAN_TRA"),
+            "DA_HUY", List.of(),
+            "HOAN_TRA", List.of()
+    );
+
+    private static final Map<String, List<String>> POS_STATUS_TRANSITIONS = Map.of(
+            "DA_GIAO", List.of("HOAN_TRA"),
+            "DA_HUY", List.of(),
+            "HOAN_TRA", List.of()
+    );
+
+    @Transactional
     public HoaDon updateBillStatus(Integer id, String status) {
         HoaDon hoaDon = hoaDonRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Bill not found"));
-        hoaDon.setTrangThaiDon(status);
+        
+        String normalizedStatus = status == null ? null : status.trim();
+        if (normalizedStatus == null || normalizedStatus.isEmpty()) {
+            throw new RuntimeException("Status is required");
+        }
+
+        String oldStatus = hoaDon.getTrangThaiDon();
+        if (normalizedStatus.equals(oldStatus)) {
+            return hoaDon;
+        }
+
+        List<String> allowedStatuses = getStatusTransitions(hoaDon).get(oldStatus);
+        if (allowedStatuses == null) {
+            throw new RuntimeException("Unsupported current status: " + oldStatus);
+        }
+        if (!allowedStatuses.contains(normalizedStatus)) {
+            throw new RuntimeException("Cannot move status from " + oldStatus + " to " + normalizedStatus);
+        }
+
+        if ("DANG_GIAO".equals(normalizedStatus)) {
+            hoaDon.setNgayGiao(java.time.LocalDateTime.now());
+        }
+
+        hoaDon.setTrangThaiDon(normalizedStatus);
         HoaDon updated = hoaDonRepository.save(hoaDon);
 
         // Log history
         LichSuHoaDon history = new LichSuHoaDon();
         history.setHoaDon(updated);
-        history.setTrangThai(status);
+        history.setTrangThaiCu(oldStatus);
+        history.setTrangThaiMoi(normalizedStatus);
+        history.setLoaiHanhDong("UPDATE_STATUS");
+        history.setHanhDong("Cập nhật trạng thái từ " + oldStatus + " sang " + normalizedStatus);
         lichSuHoaDonRepository.save(history);
 
         return updated;
@@ -388,12 +860,12 @@ public class AdminService {
         HoaDon hoaDon = hoaDonRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Bill not found"));
         List<HoaDonChiTiet> items = hoaDonChiTietRepository.findByHoaDonId(id);
-        List<LichSuHoaDon> history = lichSuHoaDonRepository.findByHoaDonIdOrderByNgayCapNhatDesc(id);
+        List<LichSuHoaDon> history = lichSuHoaDonRepository.findByHoaDonIdOrderByThoiGianDesc(id);
 
         Map<String, Object> response = new HashMap<>();
         response.put("bill", toBillDetailMap(hoaDon));
         response.put("items", items.stream().map(this::toBillItemMap).toList());
-        response.put("history", history);
+        response.put("history", history.stream().map(this::toBillHistoryMap).toList());
         return response;
     }
 
@@ -401,7 +873,8 @@ public class AdminService {
         Map<String, Object> bill = new LinkedHashMap<>();
         bill.put("id", hoaDon.getId());
         bill.put("maHoaDon", hoaDon.getMaHoaDon());
-        bill.put("tenNguoiNhan", sanitizeDisplayText(hoaDon.getTenNguoiNhan()));
+        bill.put("tenNguoiNhan", preferCurrentValue(hoaDon.getTenNguoiNhan(), 
+                hoaDon.getNguoiDung() != null ? hoaDon.getNguoiDung().getHoTen() : null));
         bill.put("tenKhachHang", sanitizeDisplayText(
                 hoaDon.getNguoiDung() != null ? hoaDon.getNguoiDung().getHoTen() : hoaDon.getTenNguoiNhan()
         ));
@@ -411,7 +884,9 @@ public class AdminService {
         bill.put("phiVanChuyen", hoaDon.getPhiVanChuyen());
         bill.put("tongThanhToan", hoaDon.getTongThanhToan());
         bill.put("trangThaiDon", hoaDon.getTrangThaiDon());
+        bill.put("availableNextStatuses", getAvailableNextStatuses(hoaDon));
         bill.put("loaiDonHang", hoaDon.getLoaiDonHang());
+        bill.put("tenPttt", hoaDon.getPtThanhToan() != null ? hoaDon.getPtThanhToan().getTenPttt() : "Chưa xác định");
         bill.put("ngayTao", hoaDon.getNgayTao());
         return bill;
     }
@@ -433,7 +908,12 @@ public class AdminService {
         Map<String, Object> bill = new LinkedHashMap<>();
         bill.put("id", hoaDon.getId());
         bill.put("maHoaDon", hoaDon.getMaHoaDon());
-        bill.put("tenNguoiNhan", sanitizeDisplayText(hoaDon.getTenNguoiNhan()));
+        bill.put("tenNguoiNhan", preferCurrentValue(hoaDon.getTenNguoiNhan(), 
+                hoaDon.getNguoiDung() != null ? hoaDon.getNguoiDung().getHoTen() : null));
+        bill.put("tenKhachHang", sanitizeDisplayText(
+                hoaDon.getNguoiDung() != null ? hoaDon.getNguoiDung().getHoTen() : hoaDon.getTenNguoiNhan()
+        ));
+        bill.put("maKhachHang", hoaDon.getNguoiDung() != null ? hoaDon.getNguoiDung().getMaNguoiDung() : null);
         bill.put("soDienThoai", sanitizeDisplayText(hoaDon.getSoDienThoai()));
         bill.put("ghiChu", sanitizeDisplayText(hoaDon.getGhiChu()));
         bill.put("diaChiChiTiet", sanitizeDisplayText(hoaDon.getDiaChiChiTiet()));
@@ -449,6 +929,8 @@ public class AdminService {
         bill.put("phiVanChuyen", hoaDon.getPhiVanChuyen());
         bill.put("tongThanhToan", hoaDon.getTongThanhToan());
         bill.put("trangThaiDon", hoaDon.getTrangThaiDon());
+        bill.put("tenPttt", hoaDon.getPtThanhToan() != null ? hoaDon.getPtThanhToan().getTenPttt() : "Chưa xác định");
+        bill.put("availableNextStatuses", getAvailableNextStatuses(hoaDon));
         bill.put("loaiDonHang", hoaDon.getLoaiDonHang());
         bill.put("ngayTao", hoaDon.getNgayTao());
         return bill;
@@ -462,13 +944,17 @@ public class AdminService {
         List<DiaChiVanChuyen> addresses = diaChiVanChuyenRepository
                 .findByNguoiDungIdAndTrangThaiTrueOrderByLaMacDinhDescIdDesc(hoaDon.getNguoiDung().getId());
 
+        if (addresses == null || addresses.isEmpty()) {
+            return null;
+        }
+
         return addresses.stream()
-                .filter(item -> sameText(item.getTenNguoiNhan(), hoaDon.getTenNguoiNhan()))
-                .filter(item -> sameText(item.getSoDienThoai(), hoaDon.getSoDienThoai()))
-                .filter(item -> sameText(item.getDiaChiChiTiet(), hoaDon.getDiaChiChiTiet()))
+                .filter(item -> item != null && sameText(item.getTenNguoiNhan(), hoaDon.getTenNguoiNhan()))
+                .filter(item -> item != null && sameText(item.getSoDienThoai(), hoaDon.getSoDienThoai()))
+                .filter(item -> item != null && sameText(item.getDiaChiChiTiet(), hoaDon.getDiaChiChiTiet()))
                 .findFirst()
                 .orElseGet(() -> addresses.stream()
-                        .filter(item -> sameText(item.getDiaChiChiTiet(), hoaDon.getDiaChiChiTiet()))
+                        .filter(item -> item != null && sameText(item.getDiaChiChiTiet(), hoaDon.getDiaChiChiTiet()))
                         .findFirst()
                         .orElse(null));
     }
@@ -482,12 +968,41 @@ public class AdminService {
         result.put("tenSanPham", preferCurrentValue(item.getTenSanPham(), sanPham != null ? sanPham.getTenSanPham() : null));
         result.put("mauSac", preferCurrentValue(item.getMauSac(), spct != null && spct.getMauSac() != null ? spct.getMauSac().getTen() : null));
         result.put("kichThuoc", preferCurrentValue(item.getKichThuoc(), spct != null && spct.getKichThuoc() != null ? spct.getKichThuoc().getTen() : null));
-        result.put("chatLieu", preferCurrentValue(item.getChatLieu(), spct != null && spct.getChatLieu() != null ? spct.getChatLieu().getTen() : null));
+        result.put("chatLieu", preferCurrentValue(item.getChatLieu(), sanPham != null && sanPham.getChatLieu() != null ? sanPham.getChatLieu().getTen() : null));
         result.put("donGia", item.getDonGia());
         result.put("soLuong", item.getSoLuong());
         result.put("thanhTien", item.getThanhTien());
         return result;
     }
+
+    private Map<String, Object> toBillHistoryMap(LichSuHoaDon history) {
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("id", history.getId());
+        result.put("maLichSu", history.getMaLichSu());
+        result.put("trangThaiCu", history.getTrangThaiCu());
+        result.put("trangThaiMoi", history.getTrangThaiMoi());
+        result.put("loaiHanhDong", history.getLoaiHanhDong());
+        result.put("hanhDong", history.getHanhDong());
+        result.put("thoiGian", history.getThoiGian());
+        result.put("nguoiThucHien", history.getNguoiThucHien() != null ? history.getNguoiThucHien().getHoTen() : null);
+        return result;
+    }
+
+    private Map<String, List<String>> getStatusTransitions(HoaDon hoaDon) {
+        if (hoaDon != null && "TAI_QUAY".equalsIgnoreCase(hoaDon.getLoaiDonHang())) {
+            return POS_STATUS_TRANSITIONS;
+        }
+        return ONLINE_STATUS_TRANSITIONS;
+    }
+
+    private List<String> getAvailableNextStatuses(HoaDon hoaDon) {
+        String currentStatus = hoaDon != null ? hoaDon.getTrangThaiDon() : null;
+        if (currentStatus == null || currentStatus.isBlank()) {
+            return List.of();
+        }
+        return getStatusTransitions(hoaDon).getOrDefault(currentStatus, List.of());
+    }
+
 
     private String preferCurrentValue(String snapshotValue, String currentValue) {
         if (isBrokenVietnamese(snapshotValue) && currentValue != null && !currentValue.isBlank()) {
@@ -507,7 +1022,11 @@ public class AdminService {
         if (value == null || value.isBlank()) {
             return null;
         }
-        return isBrokenVietnamese(value) ? "Dữ liệu cũ bị lỗi mã hóa" : value;
+        // Fix common known broken snapshots
+        if (value.trim().equalsIgnoreCase("Khach l?") || value.trim().equalsIgnoreCase("Khách l?")) {
+            return "Khách lẻ";
+        }
+        return value;
     }
 
     private boolean isBrokenVietnamese(String value) {
@@ -556,21 +1075,21 @@ public class AdminService {
     }
 
     @Transactional
-    public DotGiamGia savePromotion(DotGiamGia promotion, List<Integer> productIds) {
+    public DotGiamGia savePromotion(DotGiamGia promotion, List<Integer> spctIds) {
         DotGiamGia saved = dotGiamGiaRepository.save(promotion);
         
         // Update product promotions
-        if (productIds != null) {
+        if (spctIds != null) {
             // Clear old
             giamGiaSanPhamRepository.deleteByDotGiamGiaId(saved.getId());
             
             // Add new
-            for (Integer productId : productIds) {
+            for (Integer spctId : spctIds) {
                 GiamGiaSanPham ggsp = new GiamGiaSanPham();
                 ggsp.setDotGiamGia(saved);
-                SanPham sp = new SanPham();
-                sp.setId(productId);
-                ggsp.setSanPham(sp);
+                SanPhamChiTiet spct = new SanPhamChiTiet();
+                spct.setId(spctId);
+                ggsp.setSanPhamChiTiet(spct);
                 giamGiaSanPhamRepository.save(ggsp);
             }
         }
@@ -585,7 +1104,8 @@ public class AdminService {
     public List<Integer> getProductIdsForPromotion(Integer promotionId) {
         return giamGiaSanPhamRepository.findByDotGiamGiaId(promotionId)
                 .stream()
-                .map(ggsp -> ggsp.getSanPham().getId())
+                .filter(ggsp -> ggsp.getSanPhamChiTiet() != null)
+                .map(ggsp -> ggsp.getSanPhamChiTiet().getId())
                 .collect(java.util.stream.Collectors.toList());
     }
 
@@ -594,10 +1114,20 @@ public class AdminService {
         return gioHangRepository.findByLoaiGioHangAndTrangThai("TAI_QUAY", "DANG_SU_DUNG"); 
     }
 
+    @Transactional
     public Object getWaitingInvoiceDetail(Integer id) {
         GioHang gh = gioHangRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Không tìm thấy đơn chờ"));
         List<GioHangChiTiet> items = gioHangChiTietRepository.findByGioHangId(id);
+        
+        // Cập nhật lại giá hiện tại cho từng item (nếu có thay đổi giá hoặc khuyến mãi mới)
+        for (GioHangChiTiet item : items) {
+            BigDecimal currentPrice = getPromotionPriceForVariant(item.getSanPhamChiTiet());
+            if (item.getDonGia() == null || item.getDonGia().compareTo(currentPrice) != 0) {
+                item.setDonGia(currentPrice);
+                gioHangChiTietRepository.save(item);
+            }
+        }
         
         // Trả về cấu trúc tương đương bill detail để Frontend dễ xử lý
         java.util.Map<String, Object> response = new java.util.HashMap<>();
@@ -627,29 +1157,12 @@ public class AdminService {
         GioHang gh = gioHangRepository.findById(id).orElseThrow();
         SanPhamChiTiet spct = sanPhamChiTietRepository.findById(spctId).orElseThrow();
         
-        // Tính giá sau giảm nếu có khuyến mãi
-        BigDecimal giaBan = spct.getGiaBan();
-        LocalDateTime now = LocalDateTime.now();
-        
-        GiamGiaSanPham activeGG = giamGiaSanPhamRepository.findAll().stream()
-            .filter(gg -> gg.getSanPham().getId().equals(spct.getSanPham().getId()))
-            .filter(gg -> gg.getDotGiamGia().getTrangThai())
-            .filter(gg -> gg.getDotGiamGia().getNgayBatDau().isBefore(now) && gg.getDotGiamGia().getNgayKetHuc().isAfter(now))
-            .findFirst().orElse(null);
-            
-        if (activeGG != null) {
-            DotGiamGia dgg = activeGG.getDotGiamGia();
-            if ("PERCENT".equals(dgg.getKieuGiamGia())) {
-                BigDecimal giam = giaBan.multiply(dgg.getGiaTriGiam().divide(new BigDecimal(100)));
-                giaBan = giaBan.subtract(giam);
-            } else {
-                giaBan = giaBan.subtract(dgg.getGiaTriGiam());
-            }
-        }
+        // Sử dụng hàm có sẵn để lấy giá khuyến mãi chính xác
+        BigDecimal donGia = getPromotionPriceForVariant(spct);
         
         // Sử dụng logic nativeAddToCart hoặc thủ công để tránh trùng lặp trong giỏ
         String ma = "GHCT-POS-" + System.currentTimeMillis();
-        gioHangChiTietRepository.nativeAddToCart(id, spctId, quantity, giaBan, ma);
+        gioHangChiTietRepository.nativeAddToCart(id, spctId, quantity, donGia.max(BigDecimal.ZERO), ma);
     }
 
     @Transactional
@@ -668,6 +1181,73 @@ public class AdminService {
 
         detail.setSoLuong(quantity);
         gioHangChiTietRepository.save(detail);
+    }
+
+    @Transactional
+    public NguoiDung getOrCreateRetailCustomer() {
+        String retailPhone = "0000000000";
+        List<NguoiDung> existing = nguoiDungRepository.findBySoDienThoai(retailPhone);
+        if (!existing.isEmpty()) {
+            return existing.get(0);
+        }
+        
+        NguoiDung retail = new NguoiDung();
+        retail.setHoTen("Khách lẻ");
+        retail.setSoDienThoai(retailPhone);
+        retail.setTrangThai(true);
+        retail.setMaNguoiDung("RETAIL" + System.currentTimeMillis());
+        
+        List<VaiTro> roles = vaiTroRepository.findByTen("CUSTOMER");
+        if (roles.isEmpty()) {
+            roles = vaiTroRepository.findByTen("Khách hàng");
+        }
+        
+        if (!roles.isEmpty()) {
+            retail.setVaiTro(roles.get(0));
+        }
+        return nguoiDungRepository.save(retail);
+    }
+
+    @Transactional
+    public NguoiDung quickCreateCustomer(String hoTen, String soDienThoai) {
+        // 1. Kiểm tra SĐT trước để tránh trùng lặp UNIQUE so_dien_thoai
+        List<NguoiDung> existing = nguoiDungRepository.findBySoDienThoai(soDienThoai);
+        if (!existing.isEmpty()) {
+            return existing.get(0);
+        }
+
+        NguoiDung customer = new NguoiDung();
+        customer.setHoTen(hoTen);
+        customer.setSoDienThoai(soDienThoai);
+        customer.setTrangThai(true);
+        
+        // Tạo mã người dùng duy nhất dựa trên thời gian để tránh trùng lặp mã
+        customer.setMaNguoiDung("KH" + System.currentTimeMillis());
+        
+        // Đảm bảo email và mật khẩu là null cho khách lẻ
+        customer.setEmail(null);
+        customer.setMatKhau(null);
+
+        // 2. Xử lý Vai trò
+        List<VaiTro> roles = vaiTroRepository.findByTen("CUSTOMER");
+        if (roles.isEmpty()) {
+            roles = vaiTroRepository.findByTen("Khách hàng");
+        }
+
+        if (!roles.isEmpty()) {
+            customer.setVaiTro(roles.get(0));
+        } else {
+            List<VaiTro> allRoles = vaiTroRepository.findAll();
+            if (!allRoles.isEmpty()) {
+                customer.setVaiTro(allRoles.get(0));
+            }
+        }
+
+        try {
+            return nguoiDungRepository.save(customer);
+        } catch (Exception e) {
+            throw new RuntimeException("Lỗi khi lưu khách hàng: " + e.getMessage());
+        }
     }
 
     @Transactional
@@ -731,6 +1311,9 @@ public class AdminService {
 
     @Transactional
     public void checkoutPOS(Integer id, Integer paymentMethodId, String note, Integer customerId, String voucherCode) {
+        // Set user_id in session context for triggers (hardcoded for now as per other methods)
+        entityManager.createNativeQuery("EXEC sp_set_session_context 'user_id', 1").executeUpdate();
+
         // id là id_gio_hang
         GioHang gh = gioHangRepository.findById(id).orElseThrow();
         List<GioHangChiTiet> items = gioHangChiTietRepository.findByGioHangId(id);
@@ -768,12 +1351,18 @@ public class AdminService {
             tienGiam = tienGiam.min(tongTienHang).max(BigDecimal.ZERO);
         }
 
-        // B1: Tạo HoaDon thật (DA_GIAO)
+        // B1: Tạo HoaDon thật (CHO_XAC_NHAN để trigger tính toán)
         HoaDon hd = new HoaDon();
-        hd.setMaHoaDon("HD-" + System.currentTimeMillis());
-        hd.setNguoiDung(customer != null ? customer : gh.getNguoiDung()); // Nếu không có khách thì gán cho staff
-        hd.setTenNguoiNhan(customer != null ? customer.getHoTen() : "Khách lẻ");
-        hd.setSoDienThoai(customer != null ? customer.getSoDienThoai() : "0000000000");
+        hd.setMaHoaDon("HD-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase());
+        
+        NguoiDung effectiveCustomer = (customer != null) ? customer : gh.getNguoiDung();
+        if (effectiveCustomer == null) {
+            effectiveCustomer = getOrCreateRetailCustomer();
+        }
+
+        hd.setNguoiDung(effectiveCustomer);
+        hd.setTenNguoiNhan(effectiveCustomer.getHoTen());
+        hd.setSoDienThoai(effectiveCustomer.getSoDienThoai());
         hd.setPtThanhToan(pttt);
         hd.setTrangThaiDon("DA_GIAO");
         hd.setLoaiDonHang("TAI_QUAY");
@@ -784,7 +1373,20 @@ public class AdminService {
         hd.setTongThanhToan(tongTienHang.subtract(tienGiam).max(BigDecimal.ZERO));
         hd.setMaGiamGia(voucher);
         
-        // Các giá trị tiền sẽ được Trigger trg_update_tong_tien_hd tự tính khi chèn chi tiết
+        for (GioHangChiTiet item : items) {
+            SanPhamChiTiet spct = sanPhamChiTietRepository.findById(item.getSanPhamChiTiet().getId())
+                    .orElseThrow(() -> new RuntimeException("Product not found"));
+            int requestedQty = item.getSoLuong() != null ? item.getSoLuong() : 0;
+            int availableQty = spct.getSoLuong() != null ? spct.getSoLuong() : 0;
+            if (requestedQty <= 0) {
+                throw new RuntimeException("Invalid product quantity");
+            }
+            if (requestedQty > availableQty) {
+                throw new RuntimeException("Insufficient stock");
+            }
+        }
+
+        // Lưu hóa đơn trước khi chèn chi tiết
         hd = hoaDonRepository.save(hd);
 
         // Chuyển data sang HoaDonChiTiet
@@ -796,18 +1398,27 @@ public class AdminService {
             detail.setDonGia(item.getDonGia());
             detail.setThanhTien(item.getDonGia().multiply(BigDecimal.valueOf(item.getSoLuong())));
             detail.setTenSanPham(item.getSanPhamChiTiet().getSanPham().getTenSanPham());
-            detail.setKichThuoc(item.getSanPhamChiTiet().getKichThuoc().getTen());
-            detail.setMauSac(item.getSanPhamChiTiet().getMauSac().getTen());
-            detail.setChatLieu(item.getSanPhamChiTiet().getChatLieu().getTen());
-            detail.setMaHoaDonChiTiet("HDCT-" + System.currentTimeMillis());
+            detail.setKichThuoc(item.getSanPhamChiTiet().getKichThuoc() != null ? item.getSanPhamChiTiet().getKichThuoc().getTen() : null);
+            detail.setMauSac(item.getSanPhamChiTiet().getMauSac() != null ? item.getSanPhamChiTiet().getMauSac().getTen() : null);
+            detail.setChatLieu(item.getSanPhamChiTiet().getSanPham().getChatLieu() != null ? item.getSanPhamChiTiet().getSanPham().getChatLieu().getTen() : null);
+            detail.setMaHoaDonChiTiet("HDCT-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase());
             hoaDonChiTietRepository.save(detail);
         }
 
-        hd.setTongTienHang(tongTienHang);
-        hd.setTienGiam(tienGiam);
-        hd.setTongThanhToan(tongTienHang.subtract(tienGiam).max(BigDecimal.ZERO));
-        hd.setMaGiamGia(voucher);
-        hd = hoaDonRepository.save(hd);
+
+        for (GioHangChiTiet item : items) {
+            SanPhamChiTiet spct = sanPhamChiTietRepository.findById(item.getSanPhamChiTiet().getId())
+                    .orElseThrow(() -> new RuntimeException("Product not found"));
+            int requestedQty = item.getSoLuong() != null ? item.getSoLuong() : 0;
+            int availableQty = spct.getSoLuong() != null ? spct.getSoLuong() : 0;
+            if (requestedQty > availableQty) {
+                throw new RuntimeException("Insufficient stock");
+            }
+            spct.setSoLuong(availableQty - requestedQty);
+            int soldQty = spct.getSoLuongDaBan() != null ? spct.getSoLuongDaBan() : 0;
+            spct.setSoLuongDaBan(soldQty + requestedQty);
+            sanPhamChiTietRepository.save(spct);
+        }
 
         if (voucher != null) {
             int usedCount = voucher.getSoLuongDaDung() != null ? voucher.getSoLuongDaDung() : 0;
@@ -823,16 +1434,17 @@ public class AdminService {
         LichSuThanhToan lstt = new LichSuThanhToan();
         lstt.setHoaDon(hd);
         lstt.setPtThanhToan(pttt);
-        lstt.setSoTien(hd.getTongThanhToan()); // Trigger đã tính toán xong
+        lstt.setSoTien(hd.getTongThanhToan()); 
         lstt.setTrangThaiThanhToan("DA_THANH_TOAN");
-        lstt.setMaLichSuThanhToan("PAY-" + System.currentTimeMillis());
+        lstt.setMaLichSuThanhToan("PAY-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase());
         lichSuThanhToanRepository.save(lstt);
 
         // Log history
         LichSuHoaDon lshd = new LichSuHoaDon();
         lshd.setHoaDon(hd);
-        lshd.setTrangThai("DA_GIAO");
-        lshd.setGhiChu("Thanh toán tại quầy - POS");
+        lshd.setTrangThaiMoi("DA_GIAO");
+        lshd.setLoaiHanhDong("CREATE_BILL");
+        lshd.setHanhDong("Thanh toán tại quầy - POS");
         lichSuHoaDonRepository.save(lshd);
     }
 
@@ -855,6 +1467,17 @@ public class AdminService {
                     return donGia.multiply(BigDecimal.valueOf(soLuong));
                 })
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
+    }
+     // --- Đổi Trả (Admin ép tạo) ---
+
+    /**
+     * Admin tạo yêu cầu đổi trả thay khách từ màn Quản Lý Hóa Đơn.
+     * Bỏ qua rule 7 ngày nhưng vẫn check số lượng trả hợp lệ.
+     * Ảnh bắt buộc.
+     */
+    @Transactional
+    public DoiTra createDoiTraByAdmin(DoiTraRequest request, MultipartFile[] files, String baseUrl) {
+        return doiTraService.taoYeuCauDoiTra(request, files, baseUrl);
     }
 
     // --- Attributes ---
@@ -895,3 +1518,4 @@ public class AdminService {
         return normalized.isBlank() ? "ATTR-" + System.currentTimeMillis() : normalized;
     }
 }
+

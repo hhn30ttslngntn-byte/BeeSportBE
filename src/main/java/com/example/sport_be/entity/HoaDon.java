@@ -64,6 +64,15 @@ public class HoaDon {
     @Column(name = "trang_thai_don")
     private String trangThaiDon;
 
+    @Column(name = "hoan_tra")
+    private LocalDateTime hoanTra;
+
+    @Column(name = "ngay_nhan_hang")
+    private LocalDateTime ngayNhanHang;
+
+    @Column(name = "ngay_giao")
+    private LocalDateTime ngayGiao;
+
     @Column(name = "loai_don_hang")
     private String loaiDonHang;
 

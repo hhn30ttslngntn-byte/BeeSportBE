@@ -3,7 +3,9 @@ package com.example.sport_be.entity;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.List;
 
 @Entity
 @Table(name = "doi_tra")
@@ -25,11 +27,47 @@ public class DoiTra {
     @Column(name = "ly_do", length = 255)
     private String lyDo;
 
+    @Column(name = "ly_do_tu_choi", length = 255)
+    private String lyDoTuChoi;
+
+    @Column(name = "tinh_trang_hang", length = 20)
+    private String tinhTrangHang;
+
+    @Column(name = "danh_sach_anh", columnDefinition = "NVARCHAR(MAX)")
+    private String danhSachAnh;
+
+    @Column(name = "tong_tien_hoan")
+    private BigDecimal tongTienHoan;
+
     @Column(name = "trang_thai", length = 30)
     private String trangThai;
 
+    @Column(name = "loai_doi_tra", length = 20)
+    private String loaiDoiTra;
+
+    @Column(name = "id_spct_moi")
+    private Integer idSpctMoi;
+
+    @Column(name = "ngay_xu_ly")
+    private LocalDateTime ngayXuLy;
+
+    @Transient
+    private BigDecimal tienChenhLech;
+
+    @Transient
+    private BigDecimal phiShipHoan;
+
+    @Transient
+    private String ghiChuAdmin;
+
+    @Transient
+    private String trangThaiThanhToan; // CHUA_THANH_TOAN, DA_THANH_TOAN, KHONG_CAN_THANH_TOAN
+
     @Column(name = "ngay_yeu_cau")
     private LocalDateTime ngayYeuCau;
+
+    @OneToMany(mappedBy = "doiTra")
+    private List<DoiTraChiTiet> chiTiets;
 
     @PrePersist
     protected void onCreate() {

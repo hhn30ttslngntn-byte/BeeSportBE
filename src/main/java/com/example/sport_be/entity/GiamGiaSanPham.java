@@ -22,8 +22,8 @@ public class GiamGiaSanPham {
     private DotGiamGia dotGiamGia;
 
     @ManyToOne
-    @JoinColumn(name = "id_san_pham")
-    private SanPham sanPham;
+    @JoinColumn(name = "id_spct")
+    private SanPhamChiTiet sanPhamChiTiet;
 
     @Column(name = "trang_thai")
     private Boolean trangThai;

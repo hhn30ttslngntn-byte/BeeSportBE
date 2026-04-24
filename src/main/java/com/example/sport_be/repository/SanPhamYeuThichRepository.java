@@ -10,7 +10,7 @@ import java.util.Optional;
 @Repository
 public interface SanPhamYeuThichRepository extends JpaRepository<SanPhamYeuThich, Integer> {
     List<SanPhamYeuThich> findByNguoiDungId(Integer userId);
-    Optional<SanPhamYeuThich> findByNguoiDungIdAndSanPhamId(Integer userId, Integer productId);
+    List<SanPhamYeuThich> findByNguoiDungIdAndSanPhamId(Integer userId, Integer productId);
     boolean existsByNguoiDungIdAndSanPhamId(Integer userId, Integer productId);
     void deleteByNguoiDungIdAndSanPhamId(Integer userId, Integer productId);
 }

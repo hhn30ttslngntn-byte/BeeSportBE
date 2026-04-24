@@ -57,6 +57,11 @@ public class AdminController {
         return ResponseEntity.ok(adminService.saveProductDetails(details));
     }
 
+    @GetMapping("/product-details")
+    public ResponseEntity<List<SanPhamChiTiet>> getAllProductDetails() {
+        return ResponseEntity.ok(adminService.getAllProductDetails());
+    }
+
     // --- Category ---
     @GetMapping("/categories")
     public ResponseEntity<List<DanhMuc>> getAllCategories() {
@@ -101,8 +106,9 @@ public class AdminController {
     }
 
     @PutMapping("/bills/{id}/status")
-    public ResponseEntity<HoaDon> updateBillStatus(@PathVariable Integer id, @RequestBody String status) {
-        return ResponseEntity.ok(adminService.updateBillStatus(id, status));
+    public ResponseEntity<Void> updateBillStatus(@PathVariable Integer id, @RequestBody String status) {
+        adminService.updateBillStatus(id, status);
+        return ResponseEntity.ok().build();
     }
 
     @GetMapping("/bills/{id}")
@@ -111,8 +117,14 @@ public class AdminController {
     }
 
     @GetMapping("/revenue")
-    public ResponseEntity<Object> getRevenueSummary() {
-        return ResponseEntity.ok(adminService.getRevenueSummary());
+    public ResponseEntity<Object> getRevenueSummary(
+            @RequestParam(required = false) String mode,
+            @RequestParam(required = false) String metric,
+            @RequestParam(required = false) String orderType,
+            @RequestParam(required = false) java.time.LocalDate from,
+            @RequestParam(required = false) java.time.LocalDate to
+    ) {
+        return ResponseEntity.ok(adminService.getRevenueSummary(mode, metric, orderType, from, to));
     }
 
     // --- Voucher ---
@@ -155,7 +167,7 @@ public class AdminController {
 
     @PostMapping("/promotions")
     public ResponseEntity<DotGiamGia> savePromotion(@RequestBody com.example.sport_be.dto.PromotionSaveRequest request) {
-        return ResponseEntity.ok(adminService.savePromotion(request.getPromotion(), request.getProductIds()));
+        return ResponseEntity.ok(adminService.savePromotion(request.getPromotion(), request.getSpctIds()));
     }
 
     @DeleteMapping("/promotions/{id}")
@@ -203,6 +215,16 @@ public class AdminController {
         return ResponseEntity.ok().build();
     }
 
+    @PostMapping("/pos/retail-customer")
+    public ResponseEntity<NguoiDung> getOrCreateRetailCustomer() {
+        return ResponseEntity.ok(adminService.getOrCreateRetailCustomer());
+    }
+
+    @PostMapping("/pos/quick-customer")
+    public ResponseEntity<NguoiDung> quickCreateCustomer(@RequestParam String hoTen, @RequestParam String soDienThoai) {
+        return ResponseEntity.ok(adminService.quickCreateCustomer(hoTen, soDienThoai));
+    }
+
     @PutMapping("/pos/invoices/{id}/customer")
     public ResponseEntity<Void> updateInvoiceCustomer(@PathVariable Integer id, @RequestParam Integer customerId) {
         adminService.updateInvoiceCustomer(id, customerId);
@@ -221,7 +243,7 @@ public class AdminController {
     }
 
     @PostMapping("/pos/invoices/{id}/checkout")
-    public ResponseEntity<Void> checkoutPOS(@PathVariable Integer id, @RequestParam Integer paymentMethodId, @RequestBody(required = false) String note, @RequestParam(required = false) Integer customerId, @RequestParam(required = false) String voucherCode) {
+    public ResponseEntity<Void> checkoutPOS(@PathVariable Integer id, @RequestParam Integer paymentMethodId, @RequestParam(required = false) String note, @RequestParam(required = false) Integer customerId, @RequestParam(required = false) String voucherCode) {
         adminService.checkoutPOS(id, paymentMethodId, note, customerId, voucherCode);
         return ResponseEntity.ok().build();
     }
@@ -246,4 +268,17 @@ public class AdminController {
     public ResponseEntity<KichThuoc> saveSize(@RequestBody KichThuoc size) { return ResponseEntity.ok(adminService.saveSize(size)); }
     @PostMapping("/materials")
     public ResponseEntity<ChatLieu> saveMaterial(@RequestBody ChatLieu material) { return ResponseEntity.ok(adminService.saveMaterial(material)); }
+     // --- Đổi Trả ---
+    @PostMapping("/doi-tra/request-by-admin")
+    public ResponseEntity<?> createDoiTraByAdmin(
+            @RequestPart("data") com.example.sport_be.dto.DoiTraRequest request,
+            @RequestPart("files") MultipartFile[] files
+    ) {
+        try {
+            String baseUrl = httpServletRequest.getScheme() + "://" + httpServletRequest.getServerName() + ":" + httpServletRequest.getServerPort();
+            return ResponseEntity.ok(adminService.createDoiTraByAdmin(request, files, baseUrl));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(java.util.Map.of("error", e.getMessage()));
+        }
+    }
 }

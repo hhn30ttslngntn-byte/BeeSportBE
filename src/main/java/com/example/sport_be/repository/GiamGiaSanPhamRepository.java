@@ -12,6 +12,7 @@ import java.util.List;
 @Repository
 public interface GiamGiaSanPhamRepository extends JpaRepository<GiamGiaSanPham, Integer> {
     List<GiamGiaSanPham> findByDotGiamGiaId(Integer dotGiamGiaId);
+    List<GiamGiaSanPham> findBySanPhamChiTietId(Integer spctId);
     
     @Modifying
     @Transactional

@@ -196,4 +196,18 @@ public class VNPayService {
             return "";
         }
     }
+/**
+     * DUMMY - Hoàn tiền qua VNPay (ĐÃ VÔ HIỆU HÓA - CHUYỂN SANG THỦ CÔNG)
+     *
+     * @param doiTra đối tượng đổi trả cần hoàn tiền
+     * @return true nếu hoàn tiền thành công, false nếu thất bại
+     */
+    public Boolean processRefund(com.example.sport_be.entity.DoiTra doiTra) {
+        return true; 
+        /* Code cũ đã comment lại...
+        if (doiTra == null || doiTra.getHoaDon() == null) {
+            return false;
+        }
+        ... */
+    }
 }

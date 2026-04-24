@@ -8,7 +8,7 @@ import java.util.List;
 
 @Repository
 public interface GioHangRepository extends JpaRepository<GioHang, Integer> {
-    Optional<GioHang> findByNguoiDungIdAndTrangThaiAndLoaiGioHang(Integer nguoiDungId, String trangThai, String loai);
-    Optional<GioHang> findByNguoiDungIdAndTrangThai(Integer nguoiDungId, String trangThai);
+    List<GioHang> findByNguoiDungIdAndTrangThaiAndLoaiGioHang(Integer nguoiDungId, String trangThai, String loai);
+    List<GioHang> findByNguoiDungIdAndTrangThai(Integer nguoiDungId, String trangThai);
     List<GioHang> findByLoaiGioHangAndTrangThai(String loai, String trangThai);
 }
