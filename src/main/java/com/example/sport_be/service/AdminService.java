@@ -24,6 +24,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -230,7 +231,7 @@ public class AdminService {
                     image.setTrangThai(true);
                     return image;
                 })
-                .toList();
+                .collect(Collectors.toList());
 
         hinhAnhSanPhamRepository.saveAll(newImages);
     }
@@ -305,18 +306,18 @@ public class AdminService {
                     return rightTime.compareTo(leftTime);
                 })
                 .map(this::toBillSummaryMap)
-                .toList();
+                .collect(Collectors.toList());
     }
 
     public Map<String, Object> getRevenueSummary() {
         List<HoaDon> deliveredBills = hoaDonRepository.findAll().stream()
                 .filter(bill -> "DA_GIAO".equals(bill.getTrangThaiDon()))
-                .toList();
+                .collect(Collectors.toList());
 
         LocalDate today = LocalDate.now();
         List<HoaDon> todayBills = deliveredBills.stream()
                 .filter(bill -> bill.getNgayTao() != null && today.equals(bill.getNgayTao().toLocalDate()))
-                .toList();
+                .collect(Collectors.toList());
 
         BigDecimal todayRevenue = todayBills.stream()
                 .map(HoaDon::getTongThanhToan)
@@ -364,7 +365,7 @@ public class AdminService {
                     item.put("revenue", revenue);
                     return item;
                 })
-                .toList();
+                .collect(Collectors.toList());
 
         Map<String, Object> stats = new LinkedHashMap<>();
         stats.put("todayRevenue", todayRevenue);
@@ -400,7 +401,7 @@ public class AdminService {
 
         Map<String, Object> response = new HashMap<>();
         response.put("bill", toBillDetailMap(hoaDon));
-        response.put("items", items.stream().map(this::toBillItemMap).toList());
+        response.put("items", items.stream().map(this::toBillItemMap).collect(Collectors.toList()));
         response.put("history", history);
         return response;
     }
