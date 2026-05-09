@@ -24,17 +24,22 @@ public class DatabaseSchemaFixer implements ApplicationRunner {
         jdbcTemplate.execute("""
                 IF COL_LENGTH('dbo.tinh', 'phi_ship_mac_dinh') IS NULL
                 BEGIN
-                    ALTER TABLE dbo.tinh
-                    ADD phi_ship_mac_dinh DECIMAL(18,2) NULL;
+                    EXEC(N'ALTER TABLE dbo.tinh ADD phi_ship_mac_dinh DECIMAL(18,2) NULL;');
                 END;
 
-                UPDATE dbo.tinh
-                SET phi_ship_mac_dinh = 30000
-                WHERE phi_ship_mac_dinh IS NULL;
+                IF COL_LENGTH('dbo.tinh', 'phi_ship_mac_dinh') IS NOT NULL
+                BEGIN
+                    EXEC(N'UPDATE dbo.tinh
+                          SET phi_ship_mac_dinh = 30000
+                          WHERE phi_ship_mac_dinh IS NULL;');
+                END;
                 """);
     }
 
     private void ensureHoaDonStatusConstraint() {
+        if (!tableExists("hoa_don")) {
+            return;
+        }
         jdbcTemplate.execute("""
                 DECLARE @sql NVARCHAR(MAX) = N'';
 
@@ -77,6 +82,9 @@ public class DatabaseSchemaFixer implements ApplicationRunner {
     }
 
     private void ensureDoiTraStatusConstraint() {
+        if (!tableExists("doi_tra")) {
+            return;
+        }
         jdbcTemplate.execute("""
                 DECLARE @sql NVARCHAR(MAX) = N'';
 
@@ -117,6 +125,9 @@ public class DatabaseSchemaFixer implements ApplicationRunner {
     }
 
     private void ensureHoaDonStatusTrigger() {
+        if (!tableExists("hoa_don")) {
+            return;
+        }
         jdbcTemplate.execute("""
                 IF OBJECT_ID(N'dbo.trg_validate_trang_thai', N'TR') IS NOT NULL
                 BEGIN
@@ -205,6 +216,15 @@ public class DatabaseSchemaFixer implements ApplicationRunner {
     }
 
     private void ensureDoiTraValidationTrigger() {
+        if (!tableExists("doi_tra_chi_tiet")
+                || !tableExists("doi_tra")
+                || !tableExists("hoa_don")
+                || !tableExists("hoa_don_chi_tiet")
+                || !tableExists("san_pham_chi_tiet")
+                || !columnExists("hoa_don_chi_tiet", "da_doi_tra")) {
+            return;
+        }
+
         jdbcTemplate.execute("""
                 IF OBJECT_ID(N'dbo.trg_check_so_luong_tra', N'TR') IS NOT NULL
                 BEGIN
@@ -351,5 +371,31 @@ public class DatabaseSchemaFixer implements ApplicationRunner {
                     FROM inserted i;
                 END;
                 """);
+    }
+
+    private boolean tableExists(String tableName) {
+        Integer count = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM sys.tables WHERE name = ? AND schema_id = SCHEMA_ID('dbo')",
+                Integer.class,
+                tableName
+        );
+        return count != null && count > 0;
+    }
+
+    private boolean columnExists(String tableName, String columnName) {
+        Integer count = jdbcTemplate.queryForObject(
+                """
+                SELECT COUNT(*)
+                FROM sys.columns c
+                JOIN sys.tables t ON c.object_id = t.object_id
+                WHERE t.schema_id = SCHEMA_ID('dbo')
+                  AND t.name = ?
+                  AND c.name = ?
+                """,
+                Integer.class,
+                tableName,
+                columnName
+        );
+        return count != null && count > 0;
     }
 }
