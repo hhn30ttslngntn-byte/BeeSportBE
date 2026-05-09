@@ -26,14 +26,9 @@ public class HangLoi {
     @Column(name = "so_luong")
     private Integer soLuong;
 
-    @Column(name = "ly_do", length = 500)
+    @Column(name = "ly_do")
     private String lyDo;
 
     @Column(name = "ngay_tao")
-    private LocalDateTime ngayTao;
-
-    @PrePersist
-    protected void onCreate() {
-        ngayTao = LocalDateTime.now();
-    }
+    private LocalDateTime ngayTao = LocalDateTime.now();
 }

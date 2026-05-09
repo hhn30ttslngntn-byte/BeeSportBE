@@ -30,10 +30,6 @@ public class SanPhamChiTiet {
     private MauSac mauSac;
 
     @ManyToOne
-    @JoinColumn(name = "id_chat_lieu")
-    private ChatLieu chatLieu;
-
-    @ManyToOne
     @JoinColumn(name = "id_thuong_hieu")
     private ThuongHieu thuongHieu;
 
@@ -51,4 +47,7 @@ public class SanPhamChiTiet {
 
     @Column(name = "trang_thai")
     private Boolean trangThai;
+
+    @Transient
+    private BigDecimal giaSauGiam;
 }

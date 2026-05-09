@@ -1,14 +1,13 @@
 package com.example.sport_be.service;
 
-import com.example.sport_be.dto.DoiTraRequest;
-import com.example.sport_be.dto.DoiTraChiTietRequest;
-
 import com.example.sport_be.dto.CheckoutResponse;
 import com.example.sport_be.dto.AddressRequest;
 import com.example.sport_be.dto.AddressResponse;
 import com.example.sport_be.dto.OrderRequest;
 import com.example.sport_be.dto.OrderResponse;
 import com.example.sport_be.dto.ProductResponse;
+import com.example.sport_be.dto.DoiTraRequest;
+import com.example.sport_be.dto.DoiTraChiTietRequest;
 import com.example.sport_be.entity.*;
 import com.example.sport_be.repository.*;
 import jakarta.persistence.EntityManager;
@@ -20,6 +19,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -64,24 +64,36 @@ public class UserService {
     private BigDecimal getPromotionPrice(SanPham sp) {
         BigDecimal giaGoc = sp.getGiaGoc();
         java.time.LocalDateTime now = java.time.LocalDateTime.now();
+
+        // TÃ¬m táº¥t cáº£ cÃ¡c biáº¿n thá»ƒ cá»§a sáº£n pháº©m nÃ y
+        List<SanPhamChiTiet> variants = sanPhamChiTietRepository.findBySanPhamId(sp.getId());
         
-        GiamGiaSanPham activeGG = giamGiaSanPhamRepository.findAll().stream()
-            .filter(gg -> gg.getSanPham().getId().equals(sp.getId()))
-            .filter(gg -> gg.getDotGiamGia().getTrangThai())
-            .filter(gg -> gg.getDotGiamGia().getNgayBatDau().isBefore(now) && gg.getDotGiamGia().getNgayKetHuc().isAfter(now))
-            .findFirst().orElse(null);
-            
-        if (activeGG != null) {
-            DotGiamGia dgg = activeGG.getDotGiamGia();
-            sp.setTenKhuyenMai(dgg.getTenDot());
-            if ("PERCENT".equals(dgg.getKieuGiamGia())) {
-                BigDecimal giam = giaGoc.multiply(dgg.getGiaTriGiam().divide(new BigDecimal(100)));
-                return giaGoc.subtract(giam);
-            } else {
-                return giaGoc.subtract(dgg.getGiaTriGiam());
-            }
-        }
-        return giaGoc;
+        // TÃ¬m giÃ¡ tháº¥p nháº¥t sau giáº£m trong táº¥t cáº£ biáº¿n thá»ƒ
+        BigDecimal minPrice = variants.stream()
+            .map(v -> {
+                BigDecimal giaBan = v.getGiaBan();
+                GiamGiaSanPham activeGG = giamGiaSanPhamRepository.findAll().stream()
+                    .filter(gg -> gg.getSanPhamChiTiet() != null && gg.getSanPhamChiTiet().getId().equals(v.getId()))
+                    .filter(gg -> gg.getDotGiamGia() != null && Boolean.TRUE.equals(gg.getDotGiamGia().getTrangThai()))
+                    .filter(gg -> gg.getDotGiamGia().getNgayBatDau() != null && gg.getDotGiamGia().getNgayBatDau().isBefore(now))
+                    .filter(gg -> gg.getDotGiamGia().getNgayKetHuc() != null && gg.getDotGiamGia().getNgayKetHuc().isAfter(now))
+                    .findFirst().orElse(null);
+                
+                if (activeGG != null) {
+                    DotGiamGia dgg = activeGG.getDotGiamGia();
+                    if ("PERCENT".equals(dgg.getKieuGiamGia())) {
+                        BigDecimal giam = giaBan.multiply(dgg.getGiaTriGiam().divide(new BigDecimal(100)));
+                        return giaBan.subtract(giam);
+                    } else {
+                        return giaBan.subtract(dgg.getGiaTriGiam());
+                    }
+                }
+                return giaBan;
+            })
+            .min(BigDecimal::compareTo)
+            .orElse(giaGoc);
+
+        return minPrice;
     }
 
     private BigDecimal getPromotionPriceForVariant(SanPhamChiTiet spct) {
@@ -89,9 +101,10 @@ public class UserService {
         java.time.LocalDateTime now = java.time.LocalDateTime.now();
         
         GiamGiaSanPham activeGG = giamGiaSanPhamRepository.findAll().stream()
-            .filter(gg -> gg.getSanPham().getId().equals(spct.getSanPham().getId()))
-            .filter(gg -> gg.getDotGiamGia().getTrangThai())
-            .filter(gg -> gg.getDotGiamGia().getNgayBatDau().isBefore(now) && gg.getDotGiamGia().getNgayKetHuc().isAfter(now))
+            .filter(gg -> gg.getSanPhamChiTiet() != null && gg.getSanPhamChiTiet().getId().equals(spct.getId()))
+            .filter(gg -> gg.getDotGiamGia() != null && Boolean.TRUE.equals(gg.getDotGiamGia().getTrangThai()))
+            .filter(gg -> gg.getDotGiamGia().getNgayBatDau() != null && gg.getDotGiamGia().getNgayBatDau().isBefore(now))
+            .filter(gg -> gg.getDotGiamGia().getNgayKetHuc() != null && gg.getDotGiamGia().getNgayKetHuc().isAfter(now))
             .findFirst().orElse(null);
             
         if (activeGG != null) {
@@ -149,6 +162,7 @@ public class UserService {
                 .tenSanPham(p.getTenSanPham())
                 .danhMuc(p.getDanhMuc())
                 .thuongHieu(p.getThuongHieu())
+                .chatLieu(p.getChatLieu())
                 .giaGoc(p.getGiaGoc())
                 .giaSauGiam(getPromotionPrice(p))
                 .giaBanMin(minPrice)
@@ -158,7 +172,11 @@ public class UserService {
     }
 
     public List<SanPhamChiTiet> getProductVariants(Integer productId) {
-        return sanPhamChiTietRepository.findBySanPhamId(productId);
+        List<SanPhamChiTiet> variants = sanPhamChiTietRepository.findBySanPhamId(productId);
+        for (SanPhamChiTiet v : variants) {
+            v.setGiaSauGiam(getPromotionPriceForVariant(v));
+        }
+        return variants;
     }
 
     public List<ProductResponse> getWishlist(Integer userId) {
@@ -171,13 +189,13 @@ public class UserService {
     @Transactional
     public boolean toggleWishlist(Integer userId, Integer productId) {
         NguoiDung user = nguoiDungRepository.findById(userId)
-                .orElseThrow(() -> new RuntimeException("Người dùng không tồn tại"));
+                .orElseThrow(() -> new RuntimeException("NgÆ°á»i dÃ¹ng khÃ´ng tá»“n táº¡i"));
         SanPham product = sanPhamRepository.findById(productId)
-                .orElseThrow(() -> new RuntimeException("Sản phẩm không tồn tại"));
+                .orElseThrow(() -> new RuntimeException("Sáº£n pháº©m khÃ´ng tá»“n táº¡i"));
 
-        Optional<SanPhamYeuThich> existing = sanPhamYeuThichRepository.findByNguoiDungIdAndSanPhamId(userId, productId);
-        if (existing.isPresent()) {
-            sanPhamYeuThichRepository.delete(existing.get());
+        List<SanPhamYeuThich> existingList = sanPhamYeuThichRepository.findByNguoiDungIdAndSanPhamId(userId, productId);
+        if (!existingList.isEmpty()) {
+            sanPhamYeuThichRepository.delete(existingList.get(0));
             return false;
         }
 
@@ -195,33 +213,51 @@ public class UserService {
 
     // --- Cart ---
     public GioHang getOrCreateCart(Integer userId) {
-        return gioHangRepository.findByNguoiDungIdAndTrangThaiAndLoaiGioHang(userId, "DANG_SU_DUNG", "ONLINE")
-                .orElseGet(() -> {
-                    NguoiDung user = nguoiDungRepository.findById(userId).orElse(null);
-                    if (user == null) {
-                        return null;
-                    }
-                    GioHang newCart = new GioHang();
-                    newCart.setNguoiDung(user);
-                    newCart.setLoaiGioHang("ONLINE");
-                    newCart.setTrangThai("DANG_SU_DUNG");
-                    return gioHangRepository.save(newCart);
-                });
+        List<GioHang> existingCarts = gioHangRepository.findByNguoiDungIdAndTrangThaiAndLoaiGioHang(userId, "DANG_SU_DUNG", "ONLINE");
+        if (!existingCarts.isEmpty()) {
+            return existingCarts.get(0);
+        }
+        
+        NguoiDung user = nguoiDungRepository.findById(userId).orElse(null);
+        if (user == null) {
+            return null;
+        }
+        GioHang newCart = new GioHang();
+        newCart.setNguoiDung(user);
+        newCart.setLoaiGioHang("ONLINE");
+        newCart.setTrangThai("DANG_SU_DUNG");
+        return gioHangRepository.save(newCart);
     }
 
     @Transactional
     public void addToCart(Integer userId, Integer spctId, Integer quantity) {
+        if (quantity == null || quantity == 0) {
+            throw new RuntimeException("Số lượng sản phẩm không hợp lệ");
+        }
+
         GioHang cart = getOrCreateCart(userId);
         if (cart == null) {
-            throw new RuntimeException("Người dùng không tồn tại hoặc không hợp lệ");
+            throw new RuntimeException("NgÆ°á»i dÃ¹ng khÃ´ng tá»“n táº¡i hoáº·c khÃ´ng há»£p lá»‡");
         }
         SanPhamChiTiet spct = sanPhamChiTietRepository.findById(spctId)
-                .orElseThrow(() -> new RuntimeException("Sản phẩm không tồn tại"));
+                .orElseThrow(() -> new RuntimeException("Sáº£n pháº©m khÃ´ng tá»“n táº¡i"));
         
-        // Tính giá sau giảm nếu có khuyến mãi
+        // TÃ­nh giÃ¡ sau giáº£m náº¿u cÃ³ khuyáº¿n mÃ£i
         BigDecimal donGia = getPromotionPriceForVariant(spct);
+        int stock = spct.getSoLuong() != null ? spct.getSoLuong() : 0;
+        Optional<GioHangChiTiet> existingItem = gioHangChiTietRepository
+                .findByGioHangIdAndSanPhamChiTietId(cart.getId(), spctId);
+        int currentQty = existingItem.map(GioHangChiTiet::getSoLuong).orElse(0);
+
+        if (quantity < 0 && currentQty + quantity < 1) {
+            throw new RuntimeException("Số lượng sản phẩm không hợp lệ");
+        }
+
+        if (quantity > 0 && currentQty + quantity > stock) {
+            throw new RuntimeException("Vượt quá tồn kho");
+        }
         
-        // Sử dụng native insert để kích hoạt trigger trg_cart_insert xử lý UPSERT
+        // Sá»­ dá»¥ng native insert Ä‘á»ƒ kÃ­ch hoáº¡t trigger trg_cart_insert xá»­ lÃ½ UPSERT
         String ma = "GHCT-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase();
         gioHangChiTietRepository.nativeAddToCart(cart.getId(), spctId, quantity, donGia, ma);
     }
@@ -230,7 +266,7 @@ public class UserService {
     public void removeFromCart(Integer userId, Integer ghctId) {
         GioHang cart = getOrCreateCart(userId);
         if (cart == null) {
-            throw new RuntimeException("Người dùng không tồn tại hoặc không hợp lệ");
+            throw new RuntimeException("NgÆ°á»i dÃ¹ng khÃ´ng tá»“n táº¡i hoáº·c khÃ´ng há»£p lá»‡");
         }
         GioHangChiTiet item = gioHangChiTietRepository.findById(ghctId)
                 .orElseThrow(() -> new RuntimeException("Item not found in cart"));
@@ -249,14 +285,14 @@ public class UserService {
         }
         List<GioHangChiTiet> items = gioHangChiTietRepository.findByGioHangId(cart.getId());
         
-        // Cập nhật giá khuyến mại cho từng item dựa trên SPCT
+        // Cáº­p nháº­t giÃ¡ khuyáº¿n máº¡i cho tá»«ng item dá»±a trÃªn SPCT
         for (GioHangChiTiet item : items) {
             if (item.getSanPhamChiTiet() != null) {
-                // Lấy giá khuyến mãi thực tế cho biến thể SPCT này
+                // Láº¥y giÃ¡ khuyáº¿n mÃ£i thá»±c táº¿ cho biáº¿n thá»ƒ SPCT nÃ y
                 BigDecimal giaSauGiam = getPromotionPriceForVariant(item.getSanPhamChiTiet());
                 item.setDonGia(giaSauGiam);
                 
-                // Đồng bộ cả giaSauGiam trong đối tượng SanPham để FE dễ dùng
+                // Äá»“ng bá»™ cáº£ giaSauGiam trong Ä‘á»‘i tÆ°á»£ng SanPham Ä‘á»ƒ FE dá»… dÃ¹ng
                 if (item.getSanPhamChiTiet().getSanPham() != null) {
                     item.getSanPhamChiTiet().getSanPham().setGiaSauGiam(getPromotionPrice(item.getSanPhamChiTiet().getSanPham()));
                 }
@@ -266,42 +302,134 @@ public class UserService {
         return items;
     }
 
+    private List<GioHangChiTiet> loadCartItemsForCheckout(Integer userId, List<Integer> cartItemIds) {
+        if (cartItemIds == null || cartItemIds.isEmpty()) {
+            throw new RuntimeException("Vui lÃ²ng chá»n Ã­t nháº¥t má»™t sáº£n pháº©m");
+        }
+
+        GioHang cart = getOrCreateCart(userId);
+        if (cart == null) {
+            throw new RuntimeException("KhÃ´ng tÃ¬m tháº¥y giá» hÃ ng cá»§a ngÆ°á»i dÃ¹ng");
+        }
+
+        List<GioHangChiTiet> cartItems = new ArrayList<>();
+        for (Integer ghctId : cartItemIds) {
+            GioHangChiTiet ghct = gioHangChiTietRepository.findById(ghctId)
+                    .orElseThrow(() -> new RuntimeException("Sáº£n pháº©m trong giá» khÃ´ng tá»“n táº¡i: ID=" + ghctId));
+
+            if (ghct.getGioHang() == null || !cart.getId().equals(ghct.getGioHang().getId())) {
+                throw new RuntimeException("CÃ³ sáº£n pháº©m khÃ´ng thuá»™c giá» hÃ ng cá»§a báº¡n");
+            }
+
+            cartItems.add(ghct);
+        }
+
+        return cartItems;
+    }
+
+    private void validateCartItemStock(List<GioHangChiTiet> cartItems, boolean lockInventory) {
+        if (cartItems == null || cartItems.isEmpty()) {
+            return;
+        }
+
+        Map<Integer, Integer> requestedByVariant = new LinkedHashMap<>();
+        for (GioHangChiTiet item : cartItems) {
+            if (item.getSanPhamChiTiet() == null || item.getSanPhamChiTiet().getId() == null) {
+                throw new RuntimeException("Sáº£n pháº©m trong giá» khÃ´ng há»£p lá»‡");
+            }
+
+            int requestedQty = item.getSoLuong() != null ? item.getSoLuong() : 0;
+            if (requestedQty <= 0) {
+                String productName = item.getSanPhamChiTiet().getSanPham() != null
+                        ? item.getSanPhamChiTiet().getSanPham().getTenSanPham()
+                        : "Sáº£n pháº©m";
+                throw new RuntimeException(productName + " cÃ³ sá»‘ lÆ°á»£ng trong giá» khÃ´ng há»£p lá»‡");
+            }
+
+            requestedByVariant.merge(item.getSanPhamChiTiet().getId(), requestedQty, Integer::sum);
+        }
+
+        List<Integer> variantIds = new ArrayList<>(requestedByVariant.keySet());
+        List<SanPhamChiTiet> variants = lockInventory
+                ? sanPhamChiTietRepository.findAllByIdInForUpdate(variantIds)
+                : sanPhamChiTietRepository.findAllById(variantIds);
+
+        Map<Integer, SanPhamChiTiet> variantMap = variants.stream()
+                .collect(Collectors.toMap(SanPhamChiTiet::getId, spct -> spct));
+
+        for (Map.Entry<Integer, Integer> entry : requestedByVariant.entrySet()) {
+            Integer variantId = entry.getKey();
+            Integer requestedQty = entry.getValue();
+            SanPhamChiTiet currentVariant = variantMap.get(variantId);
+
+            if (currentVariant == null) {
+                throw new RuntimeException("Sáº£n pháº©m khÃ´ng cÃ²n tá»“n táº¡i");
+            }
+
+            int availableQty = currentVariant.getSoLuong() != null ? currentVariant.getSoLuong() : 0;
+            if (requestedQty > availableQty) {
+                String productName = currentVariant.getSanPham() != null
+                        ? currentVariant.getSanPham().getTenSanPham()
+                        : "Sáº£n pháº©m";
+                throw new RuntimeException(
+                        productName + " chá»‰ cÃ²n " + availableQty + " sáº£n pháº©m trong kho, vui lÃ²ng cáº­p nháº­t láº¡i giá» hÃ ng");
+            }
+        }
+    }
+
     // --- Checkout & Order ---
 
+    private BigDecimal calculatePhiVanChuyen(String tenTinh) {
+        if (tenTinh == null || tenTinh.isBlank()) {
+            return BigDecimal.valueOf(30000);
+        }
+        return tinhRepository.findByTenTinh(tenTinh)
+                .map(Tinh::getPhiShipMacDinh)
+                .orElse(BigDecimal.valueOf(30000));
+    }
+
     /**
-     * Chức năng Thanh toán (Checkout)
-     * Tính toán thông tin đơn hàng trước khi đặt
+     * Chá»©c nÄƒng Thanh toÃ¡n (Checkout)
+     * TÃ­nh toÃ¡n thÃ´ng tin Ä‘Æ¡n hÃ ng trÆ°á»›c khi Ä‘áº·t
      */
     public CheckoutResponse getCheckoutInfo(OrderRequest request) {
         if (request.getCartItemIds() == null || request.getCartItemIds().isEmpty()) {
+            BigDecimal defaultPhi = calculatePhiVanChuyen(request.getTinh());
             return CheckoutResponse.builder()
                     .tongTienHang(BigDecimal.ZERO)
                     .tienGiam(BigDecimal.ZERO)
-                    .phiVanChuyen(BigDecimal.valueOf(30000))
-                    .tongThanhToan(BigDecimal.valueOf(30000))
+                    .phiVanChuyen(defaultPhi)
+                    .tongThanhToan(defaultPhi)
                     .items(new ArrayList<>())
                     .build();
         }
         
-        BigDecimal tongTienHang = gioHangChiTietRepository.calculateTotal(request.getCartItemIds());
-        if (tongTienHang == null) tongTienHang = BigDecimal.ZERO;
+        if (request.getUserId() == null) {
+            throw new RuntimeException("User ID is required");
+        }
+
+        List<GioHangChiTiet> cartItems = loadCartItemsForCheckout(request.getUserId(), request.getCartItemIds());
+        validateCartItemStock(cartItems, false);
+
+        BigDecimal tongTienHang = BigDecimal.ZERO;
         
         List<CheckoutResponse.CartItemInfo> items = new ArrayList<>();
         
         for (Integer ghctId : request.getCartItemIds()) {
             GioHangChiTiet ghct = gioHangChiTietRepository.findById(ghctId)
-                    .orElseThrow(() -> new RuntimeException("Sản phẩm trong giỏ không tồn tại: ID=" + ghctId));
+                    .orElseThrow(() -> new RuntimeException("Sáº£n pháº©m trong giá» khÃ´ng tá»“n táº¡i: ID=" + ghctId));
             SanPhamChiTiet spct = ghct.getSanPhamChiTiet();
-            // Lấy giá bán sau khi áp dụng khuyến mãi
+            // Láº¥y giÃ¡ bÃ¡n sau khi Ã¡p dá»¥ng khuyáº¿n mÃ£i
             BigDecimal donGia = getPromotionPriceForVariant(spct);
             BigDecimal thanhTien = donGia.multiply(BigDecimal.valueOf(ghct.getSoLuong()));
+            tongTienHang = tongTienHang.add(thanhTien);
             
             items.add(CheckoutResponse.CartItemInfo.builder()
                     .spctId(spct.getId())
                     .tenSanPham(spct.getSanPham().getTenSanPham())
                     .kichThuoc(spct.getKichThuoc() != null ? spct.getKichThuoc().getTen() : "N/A")
                     .mauSac(spct.getMauSac() != null ? spct.getMauSac().getTen() : "N/A")
-                    .chatLieu(spct.getChatLieu() != null ? spct.getChatLieu().getTen() : "N/A")
+                    .chatLieu(spct.getSanPham().getChatLieu() != null ? spct.getSanPham().getChatLieu().getTen() : "N/A")
                     .donGia(donGia)
                     .soLuong(ghct.getSoLuong())
                     .thanhTien(thanhTien)
@@ -323,7 +451,7 @@ public class UserService {
             }
         }
         
-        BigDecimal phiVanChuyen = BigDecimal.valueOf(30000); // Giá vận chuyển cố định hoặc tính toán
+        BigDecimal phiVanChuyen = calculatePhiVanChuyen(request.getTinh());
         
         return CheckoutResponse.builder()
                 .tongTienHang(tongTienHang)
@@ -335,8 +463,8 @@ public class UserService {
     }
 
     /**
-     * Chức năng Đặt hàng (Place Order)
-     * Lưu đơn hàng và chi tiết, dựa vào trigger trg_xu_ly_hoa_don_chi_tiet để xử lý tồn kho và tổng tiền
+     * Chá»©c nÄƒng Äáº·t hÃ ng (Place Order)
+     * LÆ°u Ä‘Æ¡n hÃ ng vÃ  chi tiáº¿t, dá»±a vÃ o trigger trg_xu_ly_hoa_don_chi_tiet Ä‘á»ƒ xá»­ lÃ½ tá»“n kho vÃ  tá»•ng tiá»n
      */
     @Transactional
     public OrderResponse createOrder(OrderRequest request, HttpServletRequest httpRequest) {
@@ -344,10 +472,12 @@ public class UserService {
             throw new RuntimeException("User ID is required");
         }
         NguoiDung user = nguoiDungRepository.findById(request.getUserId())
-                .orElseThrow(() -> new RuntimeException("Người dùng không tồn tại"));
+                .orElseThrow(() -> new RuntimeException("NgÆ°á»i dÃ¹ng khÃ´ng tá»“n táº¡i"));
+        List<GioHangChiTiet> cartItems = loadCartItemsForCheckout(request.getUserId(), request.getCartItemIds());
+        validateCartItemStock(cartItems, true);
         
         PtThanhToan ptThanhToan = ptThanhToanRepository.findById(request.getPaymentMethodId())
-                .orElseThrow(() -> new RuntimeException("Phương thức thanh toán không tồn tại"));
+                .orElseThrow(() -> new RuntimeException("PhÆ°Æ¡ng thá»©c thanh toÃ¡n khÃ´ng tá»“n táº¡i"));
 
         HoaDon hoaDon = new HoaDon();
         hoaDon.setMaHoaDon("HD-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase());
@@ -360,11 +490,11 @@ public class UserService {
         hoaDon.setXa(request.getXa());
         hoaDon.setDiaChiChiTiet(request.getDiaChiChiTiet());
         hoaDon.setGhiChu(request.getGhiChu());
-        hoaDon.setPhiVanChuyen(BigDecimal.valueOf(30000));
+        hoaDon.setPhiVanChuyen(calculatePhiVanChuyen(request.getTinh()));
         hoaDon.setTrangThaiDon("CHO_XAC_NHAN");
         hoaDon.setLoaiDonHang("ONLINE");
         
-        // Tính toán giảm giá từ voucher
+        // TÃ­nh toÃ¡n giáº£m giÃ¡ tá»« voucher
         CheckoutResponse calc = getCheckoutInfo(request);
         hoaDon.setTienGiam(calc.getTienGiam());
         
@@ -378,28 +508,29 @@ public class UserService {
             }
         }
         
-        // Đặt giá trị mặc định, trigger sẽ cập nhật lại sau khi chèn hoa_don_chi_tiet
+        // Äáº·t giÃ¡ trá»‹ máº·c Ä‘á»‹nh, trigger sáº½ cáº­p nháº­t láº¡i sau khi chÃ¨n hoa_don_chi_tiet
         hoaDon.setTongTienHang(BigDecimal.ZERO);
         hoaDon.setTongThanhToan(BigDecimal.ZERO);
         
         HoaDon savedOrder = hoaDonRepository.saveAndFlush(hoaDon);
         syncShippingAddressToAddressBook(user, request);
         
-        // Lưu lịch sử hóa đơn
+        // LÆ°u lá»‹ch sá»­ hÃ³a Ä‘Æ¡n
         LichSuHoaDon history = new LichSuHoaDon();
         history.setHoaDon(savedOrder);
-        history.setTrangThai("DA_DAT");
-        history.setGhiChu("VNPAY".equals(ptThanhToan.getMaPtThanhToan())
-                ? "Don hang da tao, dang cho thanh toan VNPay"
-                : "Don hang da duoc tao");
+        history.setTrangThaiMoi("CHO_XAC_NHAN");
+        history.setLoaiHanhDong("CREATE_BILL");
+        history.setHanhDong("VNPAY".equals(ptThanhToan.getMaPtThanhToan())
+                ? "ÄÆ¡n hÃ ng Ä‘Ã£ táº¡o, Ä‘ang chá» thanh toÃ¡n VNPay"
+                : "ÄÆ¡n hÃ ng Ä‘Ã£ Ä‘Æ°á»£c táº¡o");
         lichSuHoaDonRepository.save(history);
         
         for (Integer ghctId : request.getCartItemIds()) {
             GioHangChiTiet ghct = gioHangChiTietRepository.findById(ghctId)
-                    .orElseThrow(() -> new RuntimeException("Sản phẩm trong giỏ không tồn tại: ID=" + ghctId));
+                    .orElseThrow(() -> new RuntimeException("Sáº£n pháº©m trong giá» khÃ´ng tá»“n táº¡i: ID=" + ghctId));
             SanPhamChiTiet spct = ghct.getSanPhamChiTiet();
             
-            // Lấy giá bán sau khi áp dụng khuyến mãi
+            // Láº¥y giÃ¡ bÃ¡n sau khi Ã¡p dá»¥ng khuyáº¿n mÃ£i
             BigDecimal donGia = getPromotionPriceForVariant(spct);
             
             HoaDonChiTiet detail = new HoaDonChiTiet();
@@ -409,23 +540,23 @@ public class UserService {
             detail.setTenSanPham(spct.getSanPham() != null ? spct.getSanPham().getTenSanPham() : "N/A");
             detail.setKichThuoc(spct.getKichThuoc() != null ? spct.getKichThuoc().getTen() : "N/A");
             detail.setMauSac(spct.getMauSac() != null ? spct.getMauSac().getTen() : "N/A");
-            detail.setChatLieu(spct.getChatLieu() != null ? spct.getChatLieu().getTen() : "N/A");
+            detail.setChatLieu(spct.getSanPham() != null && spct.getSanPham().getChatLieu() != null ? spct.getSanPham().getChatLieu().getTen() : "N/A");
             detail.setDonGia(donGia);
             detail.setSoLuong(ghct.getSoLuong());
             detail.setThanhTien(donGia.multiply(BigDecimal.valueOf(ghct.getSoLuong())));
 
-            // Trigger trg_update_tong_tien_hd sẽ tự động:
-            // Cập nhật tong_tien_hang và tong_thanh_toan của hoaDon
+            // Trigger trg_update_tong_tien_hd sáº½ tá»± Ä‘á»™ng:
+            // Cáº­p nháº­t tong_tien_hang vÃ  tong_thanh_toan cá»§a hoaDon
             hoaDonChiTietRepository.save(detail);
             
-            // Xóa khỏi giỏ hàng
+            // XÃ³a khá»i giá» hÃ ng
             gioHangChiTietRepository.delete(ghct);
         }
         
-        // Refresh để lấy dữ liệu đã được trigger cập nhật trong database
+        // Refresh Ä‘á»ƒ láº¥y dá»¯ liá»‡u Ä‘Ã£ Ä‘Æ°á»£c trigger cáº­p nháº­t trong database
         entityManager.flush();
         savedOrder = hoaDonRepository.findById(savedOrder.getId())
-                .orElseThrow(() -> new RuntimeException("Không tìm thấy đơn hàng sau khi tạo"));
+                .orElseThrow(() -> new RuntimeException("KhÃ´ng tÃ¬m tháº¥y Ä‘Æ¡n hÃ ng sau khi táº¡o"));
         
         String paymentUrl = null;
         if ("VNPAY".equals(ptThanhToan.getMaPtThanhToan())) {
@@ -497,8 +628,9 @@ public class UserService {
 
                 LichSuHoaDon history = new LichSuHoaDon();
                 history.setHoaDon(hoaDon);
-                history.setTrangThai("DA_DAT");
-                history.setGhiChu("Thanh toan VNPAY thanh cong");
+                history.setTrangThaiMoi("CHO_XAC_NHAN");
+                history.setLoaiHanhDong("PAYMENT");
+                history.setHanhDong("Thanh toÃ¡n VNPAY thÃ nh cÃ´ng");
                 lichSuHoaDonRepository.save(history);
             }
             return frontendRedirectBase + "?payment=success&orderId=" + hoaDon.getId();
@@ -510,8 +642,9 @@ public class UserService {
 
             LichSuHoaDon history = new LichSuHoaDon();
             history.setHoaDon(hoaDon);
-            history.setTrangThai("DA_HUY");
-            history.setGhiChu("Thanh toan VNPAY that bai hoac bi huy");
+            history.setTrangThaiMoi("DA_HUY");
+            history.setLoaiHanhDong("PAYMENT_FAILED");
+            history.setHanhDong("Thanh toan VNPAY that bai hoac bi huy");
             lichSuHoaDonRepository.save(history);
         }
 
@@ -522,41 +655,213 @@ public class UserService {
         return hoaDonRepository.findByNguoiDungIdOrderByNgayTaoDesc(userId);
     }
 
+    @Transactional
+    public void confirmReceived(Integer orderId) {
+        HoaDon hoaDon = hoaDonRepository.findById(orderId)
+                .orElseThrow(() -> new RuntimeException("Đơn hàng không tồn tại"));
+
+        String currentStatus = hoaDon.getTrangThaiDon() != null ? hoaDon.getTrangThaiDon().trim() : "";
+        
+        if (!"DANG_GIAO".equalsIgnoreCase(currentStatus)) {
+            throw new RuntimeException("Chỉ có thể xác nhận khi đơn hàng đang giao. Trạng thái hiện tại: " + currentStatus);
+        }
+
+        hoaDon.setTrangThaiDon("DA_GIAO");
+        hoaDon.setNgayNhanHang(java.time.LocalDateTime.now());
+        hoaDonRepository.save(hoaDon);
+
+        LichSuHoaDon history = new LichSuHoaDon();
+        history.setHoaDon(hoaDon);
+        history.setTrangThaiCu(currentStatus);
+        history.setTrangThaiMoi("DA_GIAO");
+        history.setLoaiHanhDong("UPDATE_STATUS");
+        history.setHanhDong("Khách hàng đã xác nhận nhận hàng");
+        lichSuHoaDonRepository.save(history);
+    }
+
     public Object getOrderById(Integer orderId) {
         HoaDon hoaDon = hoaDonRepository.findById(orderId).orElse(null);
         if (hoaDon == null) return null;
         
         List<HoaDonChiTiet> items = hoaDonChiTietRepository.findByHoaDonId(orderId);
-        List<LichSuHoaDon> history = lichSuHoaDonRepository.findByHoaDonIdOrderByNgayCapNhatDesc(orderId);
+        List<LichSuHoaDon> history = lichSuHoaDonRepository.findByHoaDonIdOrderByThoiGianDesc(orderId);
+        List<DoiTra> returns = doiTraRepository.findByHoaDonId(orderId);
         
         java.util.Map<String, Object> response = new java.util.HashMap<>();
-        response.put("bill", hoaDon);
-        response.put("items", items);
+        response.put("bill", toUserOrderBillMap(hoaDon));
+        response.put("items", items.stream().map(this::toUserOrderItemMap).toList());
         response.put("history", history);
+        response.put("returns", returns);
         return response;
+    }
+
+    private Map<String, Object> toUserOrderBillMap(HoaDon hoaDon) {
+        DiaChiVanChuyen matchedAddress = findMatchingOrderAddress(hoaDon);
+        Xa matchedXa = matchedAddress != null ? matchedAddress.getXa() : null;
+        Huyen matchedHuyen = matchedXa != null ? matchedXa.getHuyen() : null;
+        Tinh matchedTinh = matchedHuyen != null ? matchedHuyen.getTinh() : null;
+
+        String tenNguoiNhan = preferReadableText(
+                hoaDon.getTenNguoiNhan(),
+                matchedAddress != null ? matchedAddress.getTenNguoiNhan()
+                        : hoaDon.getNguoiDung() != null ? hoaDon.getNguoiDung().getHoTen() : null
+        );
+        String soDienThoai = isBrokenVietnamese(hoaDon.getSoDienThoai()) ? null : hoaDon.getSoDienThoai();
+        if ((soDienThoai == null || soDienThoai.isBlank()) && matchedAddress != null) {
+            soDienThoai = isBrokenVietnamese(matchedAddress.getSoDienThoai()) ? null : matchedAddress.getSoDienThoai();
+        }
+
+        String diaChiChiTiet = isBrokenVietnamese(hoaDon.getDiaChiChiTiet()) ? null : hoaDon.getDiaChiChiTiet();
+        if ((diaChiChiTiet == null || diaChiChiTiet.isBlank()) && matchedAddress != null) {
+            diaChiChiTiet = isBrokenVietnamese(matchedAddress.getDiaChiChiTiet()) ? null : matchedAddress.getDiaChiChiTiet();
+        }
+
+        String tinh = isBrokenVietnamese(hoaDon.getTinh()) ? null : hoaDon.getTinh();
+        String huyen = isBrokenVietnamese(hoaDon.getHuyen()) ? null : hoaDon.getHuyen();
+        String xa = isBrokenVietnamese(hoaDon.getXa()) ? null : hoaDon.getXa();
+        if ((tinh == null || tinh.isBlank()) && matchedTinh != null) {
+            tinh = matchedTinh.getTenTinh();
+        }
+        if ((huyen == null || huyen.isBlank()) && matchedHuyen != null) {
+            huyen = matchedHuyen.getTenHuyen();
+        }
+        if ((xa == null || xa.isBlank()) && matchedXa != null) {
+            xa = matchedXa.getTenXa();
+        }
+
+        Map<String, Object> bill = new java.util.LinkedHashMap<>();
+        bill.put("id", hoaDon.getId());
+        bill.put("maHoaDon", hoaDon.getMaHoaDon());
+        bill.put("nguoiDung", hoaDon.getNguoiDung());
+        bill.put("tenNguoiNhan", tenNguoiNhan);
+        bill.put("soDienThoai", soDienThoai);
+        bill.put("email", hoaDon.getNguoiDung() != null ? hoaDon.getNguoiDung().getEmail() : null);
+        bill.put("tinh", tinh);
+        bill.put("huyen", huyen);
+        bill.put("xa", xa);
+        bill.put("diaChiChiTiet", diaChiChiTiet);
+        bill.put("tongTienHang", hoaDon.getTongTienHang());
+        bill.put("tienGiam", hoaDon.getTienGiam());
+        bill.put("phiVanChuyen", hoaDon.getPhiVanChuyen());
+        bill.put("tongThanhToan", hoaDon.getTongThanhToan());
+        bill.put("trangThaiDon", hoaDon.getTrangThaiDon());
+        bill.put("loaiDonHang", hoaDon.getLoaiDonHang());
+        bill.put("ngayTao", hoaDon.getNgayTao());
+        bill.put("ptThanhToan", hoaDon.getPtThanhToan());
+        bill.put("maGiamGia", hoaDon.getMaGiamGia());
+        return bill;
+    }
+
+    private Map<String, Object> toUserOrderItemMap(HoaDonChiTiet item) {
+        SanPhamChiTiet spct = item.getSanPhamChiTiet();
+        SanPham sanPham = spct != null ? spct.getSanPham() : null;
+
+        Map<String, Object> result = new java.util.LinkedHashMap<>();
+        result.put("id", item.getId());
+        result.put("tenSanPham", preferReadableText(item.getTenSanPham(), sanPham != null ? sanPham.getTenSanPham() : null));
+        result.put("kichThuoc", sanitizeUserText(item.getKichThuoc()));
+        result.put("mauSac", preferReadableText(item.getMauSac(), spct != null && spct.getMauSac() != null ? spct.getMauSac().getTen() : null));
+        result.put("chatLieu", sanitizeUserText(item.getChatLieu()));
+        result.put("donGia", item.getDonGia());
+        result.put("soLuong", item.getSoLuong());
+        result.put("thanhTien", item.getThanhTien());
+
+        Map<String, Object> sanPhamChiTiet = new java.util.LinkedHashMap<>();
+        sanPhamChiTiet.put("id", spct != null ? spct.getId() : null);
+
+        if (sanPham != null) {
+            Map<String, Object> sanPhamMap = new java.util.LinkedHashMap<>();
+            sanPhamMap.put("id", sanPham.getId());
+            sanPhamMap.put("tenSanPham", sanPham.getTenSanPham());
+            sanPhamMap.put("hinhAnhs", sanPham.getHinhAnhs());
+            sanPhamChiTiet.put("sanPham", sanPhamMap);
+        } else {
+            sanPhamChiTiet.put("sanPham", null);
+        }
+
+        result.put("sanPhamChiTiet", sanPhamChiTiet);
+        return result;
+    }
+
+    private DiaChiVanChuyen findMatchingOrderAddress(HoaDon hoaDon) {
+        if (hoaDon.getNguoiDung() == null || hoaDon.getNguoiDung().getId() == null) {
+            return null;
+        }
+
+        List<DiaChiVanChuyen> addresses = diaChiVanChuyenRepository
+                .findByNguoiDungIdAndTrangThaiTrueOrderByLaMacDinhDescIdDesc(hoaDon.getNguoiDung().getId());
+
+        return addresses.stream()
+                .filter(item -> sameText(item.getTenNguoiNhan(), hoaDon.getTenNguoiNhan()))
+                .filter(item -> sameText(item.getSoDienThoai(), hoaDon.getSoDienThoai()))
+                .filter(item -> sameText(item.getDiaChiChiTiet(), hoaDon.getDiaChiChiTiet()))
+                .findFirst()
+                .orElseGet(() -> addresses.stream()
+                        .filter(item -> sameText(item.getDiaChiChiTiet(), hoaDon.getDiaChiChiTiet()))
+                        .findFirst()
+                        .orElseGet(() -> addresses.stream().findFirst().orElse(null)));
+    }
+
+    private String preferReadableText(String snapshotValue, String fallbackValue) {
+        if (isBrokenVietnamese(snapshotValue) && fallbackValue != null && !fallbackValue.isBlank()) {
+            return fallbackValue;
+        }
+        return sanitizeUserText(snapshotValue);
+    }
+
+    private String sanitizeAddressText(String value) {
+        if (value == null || value.isBlank()) {
+            return "";
+        }
+        return isBrokenVietnamese(value) ? "Dá»¯ liá»‡u Ä‘á»‹a chá»‰ cÅ© bá»‹ lá»—i mÃ£ hÃ³a" : value;
+    }
+
+    private String sanitizeUserText(String value) {
+        if (value == null || value.isBlank()) {
+            return "";
+        }
+        // Fix common known broken snapshots
+        if (value.trim().equalsIgnoreCase("Khach l?") || value.trim().equalsIgnoreCase("KhÃ¡ch l?")) {
+            return "KhÃ¡ch láº»";
+        }
+        return isBrokenVietnamese(value) ? "Dá»¯ liá»‡u cÅ© bá»‹ lá»—i mÃ£ hÃ³a" : value;
+    }
+
+    private boolean isBrokenVietnamese(String value) {
+        if (value == null || value.isBlank()) {
+            return false;
+        }
+        return value.contains("?")
+                || value.contains("Ãƒ")
+                || value.contains("Ã†")
+                || value.contains("Ã")
+                || value.contains("ï¿½");
     }
 
     @Transactional
     public void cancelOrder(Integer orderId) {
         HoaDon hoaDon = hoaDonRepository.findById(orderId)
-                .orElseThrow(() -> new RuntimeException("Đơn hàng không tồn tại"));
+                .orElseThrow(() -> new RuntimeException("ÄÆ¡n hÃ ng khÃ´ng tá»“n táº¡i"));
         
-        // Cho phép hủy ở trạng thái Đã đặt, Chờ xác nhận hoặc Đã xác nhận
-        if (!"DA_DAT".equals(hoaDon.getTrangThaiDon()) && !"CHO_XAC_NHAN".equals(hoaDon.getTrangThaiDon()) && !"DA_XAC_NHAN".equals(hoaDon.getTrangThaiDon())) {
-            throw new RuntimeException("Chỉ có thể hủy đơn hàng ở trạng thái Đã đặt, Chờ xác nhận hoặc Đã xác nhận");
+        // Cho phÃ©p há»§y á»Ÿ tráº¡ng thÃ¡i Chá» xÃ¡c nháº­n hoáº·c ÄÃ£ xÃ¡c nháº­n
+        if (!"CHO_XAC_NHAN".equals(hoaDon.getTrangThaiDon()) && !"DA_XAC_NHAN".equals(hoaDon.getTrangThaiDon())) {
+            throw new RuntimeException("Chá»‰ cÃ³ thá»ƒ há»§y Ä‘Æ¡n hÃ ng á»Ÿ tráº¡ng thÃ¡i Chá» xÃ¡c nháº­n hoáº·c ÄÃ£ xÃ¡c nháº­n");
         }
         
+        String oldStatus = hoaDon.getTrangThaiDon();
         hoaDon.setTrangThaiDon("DA_HUY");
         hoaDonRepository.save(hoaDon);
         
         // Log history
         LichSuHoaDon history = new LichSuHoaDon();
         history.setHoaDon(hoaDon);
-        history.setTrangThai("DA_HUY");
+        history.setTrangThaiCu(oldStatus);
+        history.setTrangThaiMoi("DA_HUY");
+        history.setLoaiHanhDong("UPDATE_STATUS");
+        history.setHanhDong("KhÃ¡ch hÃ ng há»§y Ä‘Æ¡n hÃ ng");
         lichSuHoaDonRepository.save(history);
     }
-
-    // --- Đổi Trả (User yêu cầu) ---
+     // --- Đổi Trả (User yêu cầu) ---
 
     /**
      * User tạo yêu cầu đổi trả sản phẩm.

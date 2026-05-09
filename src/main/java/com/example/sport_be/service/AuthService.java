@@ -16,39 +16,59 @@ public class AuthService {
     private final VaiTroRepository vaiTroRepository;
 
     public NguoiDung register(NguoiDung user) {
+        if (user.getEmail() == null || user.getEmail().isBlank()) {
+            throw new RuntimeException("Email là bắt buộc!");
+        }
+        if (user.getMatKhau() == null || user.getMatKhau().isBlank()) {
+            throw new RuntimeException("Mật khẩu là bắt buộc!");
+        }
+        if (user.getHoTen() == null || user.getHoTen().isBlank()) {
+            throw new RuntimeException("Họ tên là bắt buộc!");
+        }
+        if (user.getSoDienThoai() == null || user.getSoDienThoai().isBlank()) {
+            throw new RuntimeException("Số điện thoại là bắt buộc!");
+        }
+
         if (nguoiDungRepository.existsByEmail(user.getEmail())) {
-            throw new RuntimeException("Email already exists");
+            throw new RuntimeException("Email đã tồn tại!");
         }
         if (nguoiDungRepository.existsBySoDienThoai(user.getSoDienThoai())) {
-            throw new RuntimeException("Phone number already exists");
+            throw new RuntimeException("Số điện thoại đã tồn tại!");
         }
 
         // Set default role (USER)
-        VaiTro userRole = vaiTroRepository.findByMa("USER")
-                .orElseGet(() -> {
-                    VaiTro newRole = new VaiTro();
-                    newRole.setMa("USER");
-                    newRole.setTen("Khách hàng");
-                    newRole.setTrangThai(true);
-                    return vaiTroRepository.save(newRole);
-                });
+        java.util.List<VaiTro> roles = vaiTroRepository.findByMa("USER");
+        VaiTro userRole;
+        if (!roles.isEmpty()) {
+            userRole = roles.get(0);
+        } else {
+            VaiTro newRole = new VaiTro();
+            newRole.setMa("USER");
+            newRole.setTen("Khách hàng");
+            newRole.setTrangThai(true);
+            userRole = vaiTroRepository.save(newRole);
+        }
         
         user.setVaiTro(userRole);
         user.setTrangThai(true);
+        // Tự động sinh mã người dùng khi đăng ký online
+        if (user.getMaNguoiDung() == null || user.getMaNguoiDung().isBlank()) {
+            user.setMaNguoiDung("KH" + System.currentTimeMillis());
+        }
         // In a real app, hash the password here
         return nguoiDungRepository.save(user);
     }
 
     public NguoiDung login(String identifier, String password) {
-        Optional<NguoiDung> userOpt = nguoiDungRepository.findByEmail(identifier);
-        if (userOpt.isEmpty()) {
-            userOpt = nguoiDungRepository.findBySoDienThoai(identifier);
+        java.util.List<NguoiDung> users = nguoiDungRepository.findByEmail(identifier);
+        if (users.isEmpty()) {
+            users = nguoiDungRepository.findBySoDienThoai(identifier);
         }
 
-        if (userOpt.isPresent()) {
-            NguoiDung user = userOpt.get();
+        if (!users.isEmpty()) {
+            NguoiDung user = users.get(0);
             // In a real app, use password encoder
-            if (user.getMatKhau().equals(password)) {
+            if (user.getMatKhau() != null && user.getMatKhau().equals(password)) {
                 if (!user.getTrangThai()) {
                     throw new RuntimeException("Account is disabled");
                 }
@@ -59,9 +79,12 @@ public class AuthService {
     }
 
     public void resetPassword(String email, String newPassword) {
-        NguoiDung user = nguoiDungRepository.findByEmail(email)
-                .orElseThrow(() -> new RuntimeException("Email not found"));
+        java.util.List<NguoiDung> users = nguoiDungRepository.findByEmail(email);
+        if (users.isEmpty()) {
+            throw new RuntimeException("Email not found");
+        }
         
+        NguoiDung user = users.get(0);
         user.setMatKhau(newPassword);
         nguoiDungRepository.save(user);
     }

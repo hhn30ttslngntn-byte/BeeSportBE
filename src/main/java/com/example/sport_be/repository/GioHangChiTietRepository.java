@@ -9,10 +9,12 @@ import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.util.List;
+import java.util.Optional;
 
 @Repository
 public interface GioHangChiTietRepository extends JpaRepository<GioHangChiTiet, Integer> {
     List<GioHangChiTiet> findByGioHangId(Integer gioHangId);
+    Optional<GioHangChiTiet> findByGioHangIdAndSanPhamChiTietId(Integer gioHangId, Integer sanPhamChiTietId);
 
     @Modifying
     @Transactional

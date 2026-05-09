@@ -12,12 +12,11 @@ import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
 import java.util.List;
 import java.util.Map;
-
-import org.springframework.web.multipart.MultipartFile;
 
 @RestController
 @RequestMapping("/api/user")
@@ -84,8 +83,12 @@ public class UserController {
             @RequestParam Integer spctId,
             @RequestParam Integer quantity
     ) {
-        userService.addToCart(userId, spctId, quantity);
-        return ResponseEntity.ok("Added to cart");
+        try {
+            userService.addToCart(userId, spctId, quantity);
+            return ResponseEntity.ok("Added to cart");
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        }
     }
 
     @DeleteMapping("/cart/{userId}/remove/{ghctId}")
@@ -128,6 +131,16 @@ public class UserController {
         try {
             userService.cancelOrder(orderId);
             return ResponseEntity.ok("Da huy don hang thanh cong");
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        }
+    }
+
+    @PostMapping("/order/{orderId:[0-9]+}/confirm-received")
+    public ResponseEntity<String> confirmReceived(@PathVariable Integer orderId) {
+        try {
+            userService.confirmReceived(orderId);
+            return ResponseEntity.ok("Đã xác nhận nhận hàng thành công");
         } catch (Exception e) {
             return ResponseEntity.badRequest().body(e.getMessage());
         }
@@ -193,16 +206,13 @@ public class UserController {
             return ResponseEntity.badRequest().body(e.getMessage());
         }
     }
-
     // --- Đổi Trả ---
     @PostMapping("/doi-tra/request")
     public ResponseEntity<?> createDoiTraRequest(
-            @RequestPart("data") String dataJson,
+            @RequestPart("data") com.example.sport_be.dto.DoiTraRequest request,
             @RequestPart("files") MultipartFile[] files
     ) {
         try {
-            com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
-            com.example.sport_be.dto.DoiTraRequest request = mapper.readValue(dataJson, com.example.sport_be.dto.DoiTraRequest.class);
             String baseUrl = httpServletRequest.getScheme() + "://" + httpServletRequest.getServerName() + ":" + httpServletRequest.getServerPort();
             return ResponseEntity.ok(userService.createDoiTraRequest(request, files, baseUrl));
         } catch (Exception e) {

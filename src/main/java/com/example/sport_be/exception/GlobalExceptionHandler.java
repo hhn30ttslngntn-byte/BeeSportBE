@@ -14,14 +14,18 @@ public class GlobalExceptionHandler {
     public ResponseEntity<Map<String, Object>> handleException(Exception e) {
         Map<String, Object> response = new HashMap<>();
         String message = e.getMessage();
-        
-        // Bắt lỗi RAISERROR từ SQL Server
-        if (message != null && (message.contains("Vượt quá tồn kho") || message.contains("Không đủ tồn kho"))) {
-            response.put("error", "Sản phẩm không đủ số lượng trong kho");
+
+        if (message != null && (message.contains("Vuot qua ton kho") || message.contains("Khong du ton kho"))) {
+            response.put("error", "San pham khong du so luong trong kho");
             return ResponseEntity.badRequest().body(response);
         }
-        
-        response.put("error", message != null ? message : "Đã có lỗi xảy ra");
+
+        if (e instanceof RuntimeException) {
+            response.put("error", message != null ? message : "Yeu cau khong hop le");
+            return ResponseEntity.badRequest().body(response);
+        }
+
+        response.put("error", message != null ? message : "Da co loi xay ra");
         return ResponseEntity.internalServerError().body(response);
     }
 }

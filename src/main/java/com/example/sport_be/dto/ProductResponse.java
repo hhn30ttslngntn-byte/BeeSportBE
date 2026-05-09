@@ -1,5 +1,6 @@
 package com.example.sport_be.dto;
 
+import com.example.sport_be.entity.ChatLieu;
 import com.example.sport_be.entity.DanhMuc;
 import com.example.sport_be.entity.ThuongHieu;
 import com.example.sport_be.entity.HinhAnhSanPham;
@@ -21,6 +22,7 @@ public class ProductResponse {
     private String tenSanPham;
     private DanhMuc danhMuc;
     private ThuongHieu thuongHieu;
+    private ChatLieu chatLieu;
     private BigDecimal giaGoc;
     private BigDecimal giaSauGiam; // Calculated promotion price
     private BigDecimal giaBanMin; // New field for variants' selling price

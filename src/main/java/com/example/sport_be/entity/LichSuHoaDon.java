@@ -15,25 +15,35 @@ public class LichSuHoaDon {
     @Column(name = "id_ls_hd")
     private Integer id;
 
-    @Column(name = "ma_lich_su_hoa_don")
-    private String maLichSuHoaDon;
+    @Column(name = "ma_lich_su", length = 50, unique = true)
+    private String maLichSu;
 
     @ManyToOne
-    @JoinColumn(name = "id_hoa_don")
+    @JoinColumn(name = "id_hoa_don", nullable = false)
     private HoaDon hoaDon;
 
-    @Column(name = "trang_thai")
-    private String trangThai;
+    @Column(name = "trang_thai_cu", length = 30)
+    private String trangThaiCu;
 
-    @Column(name = "ghi_chu")
-    private String ghiChu;
+    @Column(name = "trang_thai_moi", length = 30)
+    private String trangThaiMoi;
 
-    @Column(name = "ngay_cap_nhat")
-    private LocalDateTime ngayCapNhat;
+    @Column(name = "loai_hanh_dong", length = 50)
+    private String loaiHanhDong;
+
+    @Column(name = "hanh_dong", length = 255)
+    private String hanhDong;
+
+    @ManyToOne
+    @JoinColumn(name = "id_nguoi_thuc_hien")
+    private NguoiDung nguoiThucHien;
+
+    @Column(name = "thoi_gian")
+    private LocalDateTime thoiGian;
 
     @PrePersist
     protected void onCreate() {
-        ngayCapNhat = LocalDateTime.now();
-        if (maLichSuHoaDon == null) maLichSuHoaDon = "LSHD" + System.currentTimeMillis();
+        thoiGian = LocalDateTime.now();
+        if (maLichSu == null) maLichSu = "LSHD_" + java.util.UUID.randomUUID().toString().substring(0, 8).toUpperCase();
     }
 }

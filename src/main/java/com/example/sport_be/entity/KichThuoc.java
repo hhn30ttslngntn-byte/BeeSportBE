@@ -22,4 +22,15 @@ public class KichThuoc {
 
     @Column(name = "trang_thai")
     private Boolean trangThai;
+
+    public String getTen() {
+        if (ten == null) return null;
+        
+        // Return original if no broken characters
+        if (!ten.contains("?")) return ten;
+        
+        // Fallback to code if name is broken
+        if (ma == null) return ten;
+        return ma.trim().toUpperCase();
+    }
 }

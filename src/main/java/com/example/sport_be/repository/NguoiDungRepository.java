@@ -9,8 +9,8 @@ import java.util.Optional;
 
 @Repository
 public interface NguoiDungRepository extends JpaRepository<NguoiDung, Integer> {
-    Optional<NguoiDung> findByEmail(String email);
-    Optional<NguoiDung> findBySoDienThoai(String soDienThoai);
+    List<NguoiDung> findByEmail(String email);
+    List<NguoiDung> findBySoDienThoai(String soDienThoai);
     Boolean existsByEmail(String email);
     Boolean existsBySoDienThoai(String soDienThoai);
     List<NguoiDung> findByVaiTroId(Integer roleId);

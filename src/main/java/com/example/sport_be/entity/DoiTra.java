@@ -45,22 +45,28 @@ public class DoiTra {
     @Column(name = "loai_doi_tra", length = 20)
     private String loaiDoiTra;
 
-    @Column(name = "tien_chenh_lech")
+    @Column(name = "id_spct_moi")
+    private Integer idSpctMoi;
+
+    @Column(name = "ngay_xu_ly")
+    private LocalDateTime ngayXuLy;
+
+    @Transient
     private BigDecimal tienChenhLech;
 
-    @Column(name = "phi_ship_hoan")
+    @Transient
     private BigDecimal phiShipHoan;
 
-    @Column(name = "ghi_chu_admin", length = 500)
+    @Transient
     private String ghiChuAdmin;
 
-    @Column(name = "trang_thai_thanh_toan", length = 30)
+    @Transient
     private String trangThaiThanhToan; // CHUA_THANH_TOAN, DA_THANH_TOAN, KHONG_CAN_THANH_TOAN
 
     @Column(name = "ngay_yeu_cau")
     private LocalDateTime ngayYeuCau;
 
-    @OneToMany(mappedBy = "doiTra", cascade = CascadeType.ALL, orphanRemoval = true)
+    @OneToMany(mappedBy = "doiTra")
     private List<DoiTraChiTiet> chiTiets;
 
     @PrePersist

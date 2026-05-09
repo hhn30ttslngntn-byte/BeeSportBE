@@ -10,5 +10,5 @@ import java.util.List;
 @Setter
 public class PromotionSaveRequest {
     private DotGiamGia promotion;
-    private List<Integer> productIds;
+    private List<Integer> spctIds;
 }

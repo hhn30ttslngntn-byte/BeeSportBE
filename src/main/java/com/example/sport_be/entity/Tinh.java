@@ -20,6 +20,9 @@ public class Tinh {
     @Column(name = "ten_tinh", length = 100)
     private String tenTinh;
 
+    @Column(name = "phi_ship_mac_dinh")
+    private java.math.BigDecimal phiShipMacDinh;
+
     @Column(name = "trang_thai")
     private Boolean trangThai;
 
