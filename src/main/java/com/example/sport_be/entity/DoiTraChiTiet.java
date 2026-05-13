@@ -4,6 +4,9 @@ import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
 
+import java.math.BigDecimal;
+import java.time.LocalDateTime;
+
 @Entity
 @Table(name = "doi_tra_chi_tiet")
 @Getter
@@ -27,5 +30,32 @@ public class DoiTraChiTiet {
     private Integer soLuongTra;
 
     @Column(name = "gia_tri_hoan")
-    private java.math.BigDecimal giaTriHoan;
+    private BigDecimal giaTriHoan;
+
+    @Column(name = "sku_doi_chieu", length = 100)
+    private String skuDoiChieu;
+
+    @Column(name = "ket_qua_kiem", length = 20)
+    private String ketQuaKiem;
+
+    @Column(name = "checklist_json", columnDefinition = "NVARCHAR(MAX)")
+    private String checklistJson;
+
+    @Column(name = "anh_kiem", columnDefinition = "NVARCHAR(MAX)")
+    private String anhKiem;
+
+    @Column(name = "nguoi_kiem", length = 100)
+    private String nguoiKiem;
+
+    @Column(name = "thoi_gian_kiem")
+    private LocalDateTime thoiGianKiem;
+
+    @Column(name = "nguoi_duyet", length = 100)
+    private String nguoiDuyet;
+
+    @Column(name = "thoi_gian_duyet")
+    private LocalDateTime thoiGianDuyet;
+
+    @Column(name = "ghi_chu_kiem", length = 500)
+    private String ghiChuKiem;
 }

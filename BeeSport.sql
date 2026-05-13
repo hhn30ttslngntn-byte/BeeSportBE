@@ -331,6 +331,17 @@ CREATE TABLE dia_chi_van_chuyen (
 );
 GO
 
+CREATE TABLE cau_hinh_doi_tra (
+    id INT IDENTITY PRIMARY KEY,
+    phi_xu_ly_phan_tram DECIMAL(5,2) NOT NULL DEFAULT 5.00,
+    phi_ship_hoan DECIMAL(18,0) NOT NULL DEFAULT 30000,
+    so_ngay_cho_phep INT NOT NULL DEFAULT 7,
+    ngay_cap_nhat DATETIME2 DEFAULT SYSDATETIME()
+);
+GO
+INSERT INTO cau_hinh_doi_tra DEFAULT VALUES;
+GO
+
 CREATE TABLE doi_tra (
     id_doi_tra INT IDENTITY PRIMARY KEY,
     ma_doi_tra NVARCHAR(50),
@@ -341,9 +352,25 @@ CREATE TABLE doi_tra (
     ly_do_tu_choi NVARCHAR(255),
     tinh_trang_hang NVARCHAR(20) CHECK (tinh_trang_hang IN ('NGUYEN_VEN','LOI','DA_SU_DUNG')),
     danh_sach_anh NVARCHAR(MAX) NULL,
+    ben_chiu_loi NVARCHAR(10) NOT NULL DEFAULT 'KHACH',
+    tien_hang_hoan DECIMAL(18,0),
+    phi_xu_ly DECIMAL(18,0),
+    phi_ship_hoan_tru DECIMAL(18,0),
     tong_tien_hoan DECIMAL(18,2) DEFAULT 0 CHECK (tong_tien_hoan >= 0),
+    phuong_thuc_hoan NVARCHAR(20),
+    so_tk_nhan NVARCHAR(50),
+    ten_chu_tk NVARCHAR(100),
+    ngan_hang NVARCHAR(100),
+    ma_giao_dich_hoan NVARCHAR(100),
+    anh_chung_tu NVARCHAR(MAX),
+    khach_xac_nhan_nhan_tien BIT DEFAULT 0,
+    ngay_khach_xac_nhan DATETIME2,
+    token_xac_nhan NVARCHAR(100) UNIQUE,
+    ghi_chu_admin NVARCHAR(500),
     ngay_xu_ly DATETIME,
-    trang_thai NVARCHAR(30) CHECK (trang_thai IN ('CHO_XAC_NHAN','CHO_TRA_HANG','DA_NHAN_HANG','HOAN_THANH','TU_CHOI','CANCELLED')),
+    trang_thai NVARCHAR(30) CHECK (trang_thai IN (
+        'CHO_XAC_NHAN','CHO_TRA_HANG','DA_NHAN_HANG','DA_KIEM_CHO_DUYET','DA_DUYET_CHO_HOAN_TIEN','CHO_HOAN_TIEN','CHO_KHACH_XAC_NHAN','HOAN_THANH','TU_CHOI','CANCELLED'
+    )),
     ngay_yeu_cau DATETIME DEFAULT GETDATE()
 );
 GO
@@ -353,7 +380,16 @@ CREATE TABLE doi_tra_chi_tiet (
     id_doi_tra INT NOT NULL FOREIGN KEY REFERENCES doi_tra(id_doi_tra),
     id_hdct INT NOT NULL FOREIGN KEY REFERENCES hoa_don_chi_tiet(id_hdct),
     so_luong_tra INT NOT NULL CHECK (so_luong_tra > 0),
-    gia_tri_hoan DECIMAL(18,2) NOT NULL CHECK (gia_tri_hoan >= 0)
+    gia_tri_hoan DECIMAL(18,2) NOT NULL CHECK (gia_tri_hoan >= 0),
+    sku_doi_chieu NVARCHAR(100),
+    ket_qua_kiem NVARCHAR(20) NOT NULL DEFAULT 'CHUA_KIEM',
+    checklist_json NVARCHAR(MAX),
+    anh_kiem NVARCHAR(MAX),
+    nguoi_kiem NVARCHAR(100),
+    thoi_gian_kiem DATETIME2,
+    nguoi_duyet NVARCHAR(100),
+    thoi_gian_duyet DATETIME2,
+    ghi_chu_kiem NVARCHAR(500)
 );
 GO
 

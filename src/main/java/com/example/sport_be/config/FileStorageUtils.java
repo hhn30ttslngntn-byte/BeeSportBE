@@ -12,14 +12,14 @@ import java.util.UUID;
 
 /**
  * Utility lưu file ảnh minh chứng cho đổi trả.
- * Lưu vào: uploads/hoan_tra/{id_doi_tra}/
+ * Lưu vào: uploads/doi-tra/{id_doi_tra}/
  */
 public class FileStorageUtils {
 
-    private static final String BASE_DIR = "uploads/hoan_tra";
+    private static final String BASE_DIR = "uploads/doi-tra";
 
     /**
-     * Lưu mảng file vào thư mục uploads/hoan_tra/{doiTraId}/
+     * Lưu mảng file vào thư mục uploads/doi-tra/{doiTraId}/
      * @param files mảng MultipartFile cần lưu
      * @param doiTraId ID đổi trả (dùng làm tên thư mục con)
      * @param baseUrl URL gốc của server (VD: http://localhost:8080)
@@ -56,7 +56,7 @@ public class FileStorageUtils {
             try {
                 file.transferTo(filePath.toFile());
                 // Trả về URL public
-                String publicUrl = baseUrl + "/uploads/hoan_tra/" + doiTraId + "/" + newFileName;
+                String publicUrl = baseUrl + "/uploads/doi-tra/" + doiTraId + "/" + newFileName;
                 savedPaths.add(publicUrl);
             } catch (IOException e) {
                 throw new RuntimeException("Lỗi lưu file: " + file.getOriginalFilename() + " - " + e.getMessage());

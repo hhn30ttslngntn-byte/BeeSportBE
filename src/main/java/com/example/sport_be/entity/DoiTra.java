@@ -3,6 +3,7 @@ package com.example.sport_be.entity;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
+
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -51,17 +52,47 @@ public class DoiTra {
     @Column(name = "ngay_xu_ly")
     private LocalDateTime ngayXuLy;
 
-    @Transient
-    private BigDecimal tienChenhLech;
+    @Column(name = "ben_chiu_loi", length = 10)
+    private String benChiuLoi;
 
-    @Transient
-    private BigDecimal phiShipHoan;
+    @Column(name = "tien_hang_hoan")
+    private BigDecimal tienHangHoan;
 
-    @Transient
+    @Column(name = "phi_xu_ly")
+    private BigDecimal phiXuLy;
+
+    @Column(name = "phi_ship_hoan_tru")
+    private BigDecimal phiShipHoanTru;
+
+    @Column(name = "phuong_thuc_hoan", length = 20)
+    private String phuongThucHoan;
+
+    @Column(name = "so_tk_nhan", length = 50)
+    private String soTkNhan;
+
+    @Column(name = "ten_chu_tk", length = 100)
+    private String tenChuTk;
+
+    @Column(name = "ngan_hang", length = 100)
+    private String nganHang;
+
+    @Column(name = "ma_giao_dich_hoan", length = 100)
+    private String maGiaoDichHoan;
+
+    @Column(name = "anh_chung_tu", columnDefinition = "NVARCHAR(MAX)")
+    private String anhChungTu;
+
+    @Column(name = "khach_xac_nhan_nhan_tien")
+    private Boolean khachXacNhanNhanTien;
+
+    @Column(name = "ngay_khach_xac_nhan")
+    private LocalDateTime ngayKhachXacNhan;
+
+    @Column(name = "token_xac_nhan", length = 100)
+    private String tokenXacNhan;
+
+    @Column(name = "ghi_chu_admin", length = 500)
     private String ghiChuAdmin;
-
-    @Transient
-    private String trangThaiThanhToan; // CHUA_THANH_TOAN, DA_THANH_TOAN, KHONG_CAN_THANH_TOAN
 
     @Column(name = "ngay_yeu_cau")
     private LocalDateTime ngayYeuCau;
@@ -73,5 +104,11 @@ public class DoiTra {
     protected void onCreate() {
         ngayYeuCau = LocalDateTime.now();
         if (maDoiTra == null) maDoiTra = "DT" + System.currentTimeMillis();
+        if (benChiuLoi == null || benChiuLoi.isBlank()) benChiuLoi = "KHACH";
+        if (khachXacNhanNhanTien == null) khachXacNhanNhanTien = false;
+        if (tienHangHoan == null) tienHangHoan = BigDecimal.ZERO;
+        if (phiXuLy == null) phiXuLy = BigDecimal.ZERO;
+        if (phiShipHoanTru == null) phiShipHoanTru = BigDecimal.ZERO;
+        if (tongTienHoan == null) tongTienHoan = BigDecimal.ZERO;
     }
 }
